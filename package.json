@@ -1,0 +1,16 @@
+{
+  "name": "omp-provider-kourier",
+  "version": "1.0.0",
+  "description": "Native Kourier provider extension for Oh My Pi",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20.0.0" },
+  "files": ["dist", "src", "README.md", "LICENSE", "upstream"],
+  "bin": { "omp-provider-kourier": "dist/bin/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test tests",
+    "install-extension": "npm run build && node dist/bin/cli.js install"
+  },
+  "devDependencies": { "@types/bun": "^1.2.0", "@types/node": "^22.0.0", "typescript": "^5.7.0" }
+}

@@ -1,0 +1,10 @@
+auth "kourier" {
+	name "Kourier (DeepSeek V4.1 Flash)"
+	login "api-key" {
+		auth-url "https://app.kourier.sh"
+		instructions "Sign in at Kourier or create an API key, then paste it here"
+		prompt "Paste your Kourier API key" placeholder="sk-bf-..."
+		normalize "strip-bearer"
+		validate "models-endpoint" label="kourier" url="https://api.kourier.sh/v1/models"
+	}
+}
