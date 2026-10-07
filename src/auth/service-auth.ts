@@ -1,7 +1,43 @@
 import { KOURIER_AUTH_BASE, type FetchLike, type OAuthCredentials, type OAuthLoginCallbacks } from "../types.js";
 
-interface IdentityResponse { claim_token?: string; verification_uri?: string; verification_url?: string; user_code?: string; expires_in?: number; interval?: number }
-interface TokenResponse { access_token?: string; api_key?: string; token_type?: string; error?: string; error_description?: string; expires_in?: number; refresh_token?: string }
+interface IdentityClaim { user_code?: string; verification_uri?: string; verification_url?: string; interval?: number; expires_in?: number }
+interface IdentityResponse {
+  claim_token?: string;
+  user_code?: string;
+  verification_uri?: string;
+  verification_url?: string;
+  interval?: number;
+  expires_in?: number;
+  claim?: IdentityClaim;
+}
+interface TokenResponse { access_token?: string; api_key?: string; error?: string; error_description?: string; expires_in?: number; refresh_token?: string }
+
+async function parseTokenResponse(response: Response): Promise<TokenResponse> {
+  const body = await response.text();
+  try { return JSON.parse(body) as TokenResponse; }
+  catch {
+    const fields = new URLSearchParams(body);
+    return {
+      access_token: fields.get("access_token") ?? undefined,
+      api_key: fields.get("api_key") ?? undefined,
+      refresh_token: fields.get("refresh_token") ?? undefined,
+      error: fields.get("error") ?? undefined,
+      error_description: fields.get("error_description") ?? undefined,
+      expires_in: Number(fields.get("expires_in")) || undefined,
+    };
+  }
+}
+
+function waitForPoll(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const timer = setTimeout(resolve, milliseconds);
+  if (signal) {
+    const cancel = (): void => { clearTimeout(timer); reject(signal.reason ?? new Error("Login cancelled")); };
+    if (signal.aborted) cancel();
+    else signal.addEventListener("abort", cancel, { once: true });
+  }
+  return promise;
+}
 
 export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, options: { fetch?: FetchLike; authBase?: string; pollIntervalMs?: number } = {}): Promise<OAuthCredentials> {
   const email = (await callbacks.onPrompt({ message: "Email address for Kourier agent sign-in", placeholder: "you@example.com" })).trim();
@@ -9,33 +45,39 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
   const fetcher = options.fetch ?? fetch;
   const base = (options.authBase ?? KOURIER_AUTH_BASE).replace(/\/$/, "");
   const identityResponse = await fetcher(`${base}/agent/identity`, {
-    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ email }), signal: callbacks.signal,
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ type: "service_auth", login_hint: email, client_name: "omp" }), signal: callbacks.signal,
   });
   if (!identityResponse.ok) throw new Error(`Kourier agent identity request failed (${identityResponse.status})`);
   const identity = await identityResponse.json() as IdentityResponse;
-  if (!identity.claim_token || !(identity.verification_url || identity.verification_uri) || !identity.user_code) throw new Error("Kourier returned an incomplete agent identity response");
-  const verifyUrl = identity.verification_url ?? identity.verification_uri!;
-  callbacks.onAuth({ url: verifyUrl, userCode: identity.user_code, instructions: `Open ${verifyUrl} and enter code ${identity.user_code}` });
-  const interval = Math.max(1000, (identity.interval ?? 5) * 1000, options.pollIntervalMs ?? 0);
-  const deadline = Date.now() + Math.max(1, identity.expires_in ?? 900) * 1000;
+  const claim = identity.claim;
+  const claimToken = identity.claim_token;
+  const userCode = claim?.user_code ?? identity.user_code;
+  const verifyUrl = claim?.verification_url ?? identity.verification_url ?? claim?.verification_uri ?? identity.verification_uri;
+  if (!claimToken || !verifyUrl || !userCode) throw new Error("Kourier returned an incomplete agent identity response");
+  callbacks.onAuth({ url: verifyUrl, userCode, instructions: `Code: ${userCode}\nOpen ${verifyUrl} in your browser, sign in with ${email}, type the code and click Approve.` });
+  const intervalSeconds = claim?.interval ?? identity.interval ?? 5;
+  const intervalMs = Math.max(1000, intervalSeconds * 1000, options.pollIntervalMs ?? 0);
+  const expiresIn = claim?.expires_in ?? identity.expires_in ?? 600;
+  const deadline = Date.now() + Math.max(1, expiresIn) * 1000;
   while (Date.now() < deadline) {
     if (callbacks.signal?.aborted) throw callbacks.signal.reason ?? new Error("Login cancelled");
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, interval);
-      callbacks.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(callbacks.signal?.reason ?? new Error("Login cancelled")); }, { once: true });
-    });
+    await waitForPoll(intervalMs, callbacks.signal);
     const response = await fetcher(`${base}/oauth2/token`, {
-      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ grant_type: "urn:ietf:params:oauth:grant-type:device_code", claim_token: identity.claim_token }), signal: callbacks.signal,
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "urn:workos:agent-auth:grant-type:claim", claim_token: claimToken }).toString(), signal: callbacks.signal,
     });
-    const payload = await response.json() as TokenResponse;
+    const payload = await parseTokenResponse(response);
     if (response.ok && (payload.api_key || payload.access_token)) {
       const key = payload.api_key ?? payload.access_token!;
       callbacks.onProgress?.("Kourier sign-in complete");
-      return { apiKey: key, accessToken: key, refreshToken: payload.refresh_token, expiresAt: payload.expires_in ? Date.now() + payload.expires_in * 1000 : undefined };
+      return {
+        access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000,
+        email, apiKey: key, accessToken: key,
+      };
     }
     if (payload.error === "authorization_pending") { callbacks.onProgress?.("Waiting for browser verification…"); continue; }
-    if (payload.error === "slow_down") { callbacks.onProgress?.("Kourier requested slower polling"); await new Promise(resolve => setTimeout(resolve, interval)); continue; }
+    if (payload.error === "slow_down") { callbacks.onProgress?.("Kourier requested slower polling"); continue; }
     if (payload.error === "expired_token" || response.status === 404) throw new Error("Kourier sign-in request expired; start login again");
     if (payload.error) throw new Error(`Kourier sign-in failed: ${payload.error_description ?? payload.error}`);
     if (!response.ok) throw new Error(`Kourier token polling failed (${response.status})`);

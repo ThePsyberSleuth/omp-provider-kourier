@@ -42,12 +42,12 @@ export async function loginWithPkce(callbacks: OAuthLoginCallbacks, options: { f
     if (options.openBrowser) await options.openBrowser(authorize.toString());
     const code = await promise;
     const tokenResponse = await (options.fetch ?? fetch)(new URL("/oauth2/token", authBase), {
-      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier }), signal: callbacks.signal,
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier }).toString(), signal: callbacks.signal,
     });
     const payload = await tokenResponse.json() as TokenPayload;
     if (!tokenResponse.ok || !(payload.api_key || payload.access_token)) throw new Error(payload.error_description ?? `Kourier token exchange failed (${tokenResponse.status})`);
     const key = payload.api_key ?? payload.access_token!;
-    return { apiKey: key, accessToken: key, refreshToken: payload.refresh_token, expiresAt: payload.expires_in ? Date.now() + payload.expires_in * 1000 : undefined };
+    return { access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000, apiKey: key, accessToken: key };
   } finally { clearTimeout(timeout); closeServer(); }
 }

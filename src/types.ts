@@ -16,7 +16,10 @@ export interface ProviderModelConfig {
   contextWindow: number; maxTokens: number;
   thinking?: { mode: "effort"; efforts: Array<"low" | "medium" | "high">; defaultLevel: "low" | "medium" | "high" };
 }
-export interface OAuthCredentials { accessToken?: string; refreshToken?: string; expiresAt?: number; apiKey?: string; [key: string]: unknown }
+export interface OAuthCredentials {
+  access: string; refresh?: string; expires?: number; email?: string;
+  apiKey?: string; accessToken?: string; [key: string]: unknown;
+}
 export interface OAuthAuthInfo { url?: string; instructions?: string; userCode?: string; message?: string }
 export interface OAuthPrompt { message: string; placeholder?: string; allowEmpty?: boolean }
 export interface OAuthLoginCallbacks {

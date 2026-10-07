@@ -1,18 +1,28 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { symlink, mkdir, lstat } from "node:fs/promises";
+import { symlink, mkdir, lstat, unlink, access } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { discoverModels, FALLBACK_MODELS } from "./discovery/model-catalog.js";
 import { verifyApiKey } from "./auth/verify-key.js";
 
 const apiKey = (): string | undefined => process.env.KOURIER_API_KEY;
-async function install(): Promise<void> {
-  const source = resolve(new URL("../../src/index.ts", import.meta.url).pathname);
+async function install(force: boolean): Promise<void> {
+  const localSource = new URL("./index.ts", import.meta.url);
+  let source: string;
+  try { await access(localSource); source = resolve(localSource.pathname); }
+  catch { source = resolve(new URL("../../src/index.ts", import.meta.url).pathname); }
   const extensionDir = join(homedir(), ".omp/agent/extensions");
   const destination = join(extensionDir, "kourier.ts");
   await mkdir(extensionDir, { recursive: true });
-  try { await lstat(destination); throw new Error(`Refusing to replace existing extension at ${destination}`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  try {
+    const existing = await lstat(destination);
+    if (existing.isDirectory()) throw new Error(`Refusing to replace extension directory at ${destination}`);
+    if (!force) throw new Error(`Extension already exists at ${destination}; pass --force to replace it`);
+    await unlink(destination);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   await symlink(source, destination);
   console.log(`Installed Kourier extension at ${destination}`);
 }
@@ -44,7 +54,7 @@ async function loginPrompt(): Promise<void> {
 
 export async function runCli(args = process.argv.slice(2)): Promise<void> {
   const command = args[0] ?? "help";
-  if (command === "install") return install();
+  if (command === "install") return install(args.includes("--force"));
   if (command === "login") return loginPrompt();
   if (command === "models") return models();
   if (command === "test") return testConnection();

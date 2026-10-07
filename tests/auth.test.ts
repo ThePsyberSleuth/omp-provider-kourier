@@ -14,26 +14,31 @@ describe("Kourier authentication", () => {
     expect(await verifyApiKey("bad\nkey", { fetch: fetch })).toBe(false);
   });
   test("polls identity claim through pending and slow-down to a minted key", async () => {
-    const bodies: Array<Record<string, unknown>> = [];
+    const tokenBodies: URLSearchParams[] = [];
     let polls = 0;
     const fetcher = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      if (String(url).endsWith("/agent/identity")) return Response.json({ claim_token: "claim-1", verification_url: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 20, interval: 1 });
-      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (String(url).endsWith("/agent/identity")) {
+        expect(init?.headers).toMatchObject({ "Content-Type": "application/json" });
+        expect(JSON.parse(String(init?.body))).toEqual({ type: "service_auth", login_hint: "member@example.com", client_name: "omp" });
+        return Response.json({ claim_token: "claim-1", claim: { verification_uri: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 20, interval: 1 } });
+      }
+      expect(new Headers(init?.headers).get("content-type")).toBe("application/x-www-form-urlencoded");
+      tokenBodies.push(new URLSearchParams(String(init?.body)));
       polls++;
       if (polls === 1) return Response.json({ error: "authorization_pending" }, { status: 400 });
       if (polls === 2) return Response.json({ error: "slow_down" }, { status: 400 });
-      return Response.json({ api_key: "sk-bf-issued" });
+      return Response.json({ api_key: "sk-bf-issued", refresh_token: "r1", expires_in: 3600 });
     };
     const received: string[] = [];
-    const result = await loginWithServiceAuth({ ...callbacks("member@example.com"), onAuth: info => { received.push(info.userCode ?? ""); } }, { fetch: fetcher, pollIntervalMs: 1000 });
-    expect(result.apiKey).toBe("sk-bf-issued");
-    expect(received).toEqual(["123456"]);
-    expect(bodies.every(body => body.claim_token === "claim-1")).toBe(true);
+    const result = await loginWithServiceAuth({ ...callbacks("member@example.com"), onAuth: info => { received.push(info.instructions ?? ""); } }, { fetch: fetcher, pollIntervalMs: 1000 });
+    expect(result).toMatchObject({ access: "sk-bf-issued", apiKey: "sk-bf-issued", accessToken: "sk-bf-issued", refresh: "r1", email: "member@example.com" });
+    expect(received[0]).toContain("Code: 123456");
+    expect(tokenBodies.every(body => body.get("grant_type") === "urn:workos:agent-auth:grant-type:claim" && body.get("claim_token") === "claim-1")).toBe(true);
   });
-  test("surfaces expired device claims", async () => {
+  test("parses form-encoded token error responses", async () => {
     const fetcher = async (url: string | URL | Request): Promise<Response> => String(url).endsWith("/agent/identity")
-      ? Response.json({ claim_token: "claim-1", verification_uri: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 20, interval: 1 })
-      : Response.json({ error: "expired_token" }, { status: 400 });
+      ? Response.json({ claim_token: "claim-1", verification_url: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 20, interval: 1 })
+      : new Response("error=expired_token", { status: 400, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
     await expect(loginWithServiceAuth(callbacks("person@example.com"), { fetch: fetcher })).rejects.toThrow("expired");
   });
 });

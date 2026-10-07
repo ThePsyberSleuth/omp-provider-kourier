@@ -7,7 +7,7 @@ const callbacks: OAuthLoginCallbacks = { onAuth() {}, onPrompt: async () => "", 
 
 describe("Kourier PKCE and extension", () => {
   test("runs an S256 browser callback and exchanges the authorization code", async () => {
-    let tokenBody: Record<string, unknown> | undefined;
+    let tokenBody: URLSearchParams | undefined;
     const result = await loginWithPkce(callbacks, {
       authBase: "https://auth.example", clientId: "test-client",
       openBrowser: async url => {
@@ -22,13 +22,16 @@ describe("Kourier PKCE and extension", () => {
       },
       fetch: async (input, init) => {
         expect(String(input)).toBe("https://auth.example/oauth2/token");
-        tokenBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(new Headers(init?.headers).get("content-type")).toBe("application/x-www-form-urlencoded");
+        tokenBody = new URLSearchParams(String(init?.body));
         return Response.json({ access_token: "sk-bf-token", refresh_token: "refresh", expires_in: 3600 });
       },
     });
-    expect(result.apiKey).toBe("sk-bf-token");
-    expect(tokenBody).toMatchObject({ grant_type: "authorization_code", code: "test-code", client_id: "test-client" });
-    expect(typeof tokenBody?.code_verifier).toBe("string");
+    expect(result).toMatchObject({ access: "sk-bf-token", apiKey: "sk-bf-token", accessToken: "sk-bf-token", refresh: "refresh" });
+    expect(tokenBody?.get("grant_type")).toBe("authorization_code");
+    expect(tokenBody?.get("code")).toBe("test-code");
+    expect(tokenBody?.get("client_id")).toBe("test-client");
+    expect(typeof tokenBody?.get("code_verifier")).toBe("string");
   });
   test("registers provider defaults, OAuth, and dynamic discovery", async () => {
     let providerName = "";
