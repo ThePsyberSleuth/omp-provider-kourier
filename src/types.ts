@@ -34,13 +34,25 @@ export const KOURIER_COMPAT = {
   // rejects the literal "medium" with a 400, so it is rewritten to "high".
   // Measured reasoning tokens: low ~95, high ~113, xhigh ~102 (DeepSeek maps
   // xhigh->high; only "max" ~204 is a real step up). No integer 1-100 support here.
+  // (The host also heals this by parsing "must be low, high, xhigh, max" and
+  // retrying the nearest rung, so the map is free rather than load-bearing.)
   reasoningEffortMap: { minimal: "low", medium: "high", xhigh: "high" },
   reasoningDisableMode: "none-effort",
-  // Thinking streams and replays in `reasoning`, not `reasoning_content`.
+  // Thinking streams and replays in `reasoning`, with a parallel
+  // `reasoning_details[{type:"reasoning.text"}]` copy. The catalog defaults an
+  // openai-completions host to `reasoning_content`, which this wire never sends.
   reasoningContentField: "reasoning",
   supportsReasoningEffort: true,
   supportsReasoningParams: true,
   supportsToolChoice: true,
   supportsForcedToolChoice: true,
+  // The model id classifies as the DeepSeek family, so the catalog applies
+  // DeepSeek-on-its-own-API rules to this Bifrost front. Measured: every one of
+  // them is false here, and leaving them inherited silently degrades agentic
+  // turns (reasoning dropped whenever tools are sent) and breaks replay.
+  disableReasoningOnToolChoice: false,
+  requiresReasoningContentForToolCalls: false,
+  requiresReasoningContentForAllAssistantTurns: false,
+  allowsSyntheticReasoningContentForToolCalls: true,
 } as const;
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;

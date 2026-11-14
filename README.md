@@ -32,9 +32,13 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - DeepSeek V4.1 Flash: 262,144 context, flat-rate zero per-token cost metadata.
 - Output budget: **no 16,384 cap.** Kourier's docs and dashboard say 16,384 max output, but the endpoint only enforces `prompt_tokens + max_tokens <= 262144`. Measured: `max_tokens: 16385` returns `finish_reason: "length"` at exactly 16385 tokens, and a 40,000 budget completed at 20,831 tokens. The model card therefore advertises 65,536 — DeepSeek's documented thinking-mode default — leaving ~196K of prompt room. `GET /v1/models` advertises no output limit at all, so a declared `max_output_tokens` is honored when present and 65,536 is used otherwise.
 - Reasoning shares the output budget: at `reasoning_effort: high` a forced 3,000-token cap finished `length` with 937 of those tokens spent on reasoning. A `max` run therefore yields less visible answer per token, not more room. omp sends this limit as `max_completion_tokens` (not `max_tokens`), verified on the wire.
-- Thinking effort: `off` (`reasoning_effort: none`), then `minimal`→`low`, `low`, `medium`→`high`, `high` (default), `xhigh`→`high`, `max`. Verified against the live endpoint: `medium` as a literal returns HTTP 400, and DeepSeek's own mapping table sends `xhigh` to `high` — measured reasoning tokens are low ≈95, high ≈113, xhigh ≈102, max ≈204, so `max` is the only step above `high`. Thinking streams in `reasoning`, not `reasoning_content`; the model's `reasoning_content` must be replayed when tools are present.
+- Thinking effort: `off` (`reasoning_effort: none`), then `minimal`→`low`, `low`, `medium`→`high`, `high` (default), `xhigh`→`high`, `max`. Verified against the live endpoint: `medium` as a literal returns HTTP 400, and DeepSeek's own mapping table sends `xhigh` to `high` — measured reasoning tokens are low ≈95, high ≈113, xhigh ≈102, max ≈204, so `max` is the only step above `high`. Thinking streams in `reasoning` (with a parallel `reasoning_details[{type:"reasoning.text"}]` copy), never `reasoning_content`.
 - Wire quirks carried in `KOURIER_COMPAT`: effort mapping, `none` as the off switch, and thinking read from `reasoning` rather than `reasoning_content`.
-- Tool calls: verified end to end at both `high` and `max` — the model returns a `tool_calls` entry with parseable arguments, and a second completion carrying the matching `tool_call_id` and the tool result produces the correct answer. Forced (`tool_choice` naming a function) and `required` are honored; `none` disables tools; no 400 and no retry on any of them. On the tool-call turn DeepSeek emits no reasoning at all, so omp replays `reasoning: ""`; the endpoint accepts that or an omitted field, so the replay quirk is tolerated rather than load-bearing.
+- Tool calls: verified end to end at both `high` and `max` — the model returns a `tool_calls` entry with parseable arguments, and a second completion carrying the matching `tool_call_id` and the tool result produces the correct answer. Forced (`tool_choice` naming a function) and `required` are honored; `none` disables tools; no 400 and no retry on any of them.
+- Reasoning survives tools here. The model id classifies as the DeepSeek family, so `@oh-my-pi/pi-catalog` applies DeepSeek-on-its-own-API rules to this Bifrost front; all four are **false** on Kourier and are overridden explicitly, because inheriting them silently degrades agentic turns:
+  - `disableReasoningOnToolChoice` — inherited `true` makes `openai-shared.ts` set `disableReason: "tool-choice"`, stripping the effort param from every turn that sends a `tool_choice`. Measured: reasoning + tools + `tool_choice: "auto"` returns 60 reasoning tokens.
+  - `requiresReasoningContentForToolCalls` / `…ForAllAssistantTurns` — inherited `true` demands a field this wire never sends. Measured: replaying assistant turns with no `reasoning_content` succeeds.
+  - `allowsSyntheticReasoningContentForToolCalls` — left `true`, since nothing validates the value.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
 
 ### The Responses endpoint (`POST /v1/responses`)
@@ -51,6 +55,39 @@ Kourier also serves OpenAI's Responses format. It works, but this plugin deliber
 | Tool call → result | `function_call_output` not needed | works via `{"type":"function_call_output","call_id":…,"output":…}` |
 | `previous_response_id` | n/a | **404** — server is stateless, replay full `output` instead |
 | Video input | not accepted — part silently dropped | not accepted — 400 |
+
+### Media handling
+
+Images work on every shape an agent actually produces, verified against `chat/completions`:
+
+| Shape | Result |
+|---|---|
+| Image + text in one user message | 200 — correct colour |
+| Image inside a **tool result** | 200 — correct colour ("Red"), the path `read` on a `.png` takes |
+| Image + tools + `reasoning_effort: high` together | 200 — correct colour |
+| Multiple images in one message (3, 8, 16, 32, 64) | 200 at every count; 64 images = 11,937 prompt tokens |
+| PNG, WebP | both accepted |
+
+`detail` accepts only `auto | low | high` — `detail: "original"` returns 400 (`Input should be 'auto', 'low'`). omp never sends it on this wire: the completions encoder omits `original` and passes `low`/`high` through (`openai-completions.ts`), so Snapcompact frames bill at the provider default rather than failing.
+
+Large images are resized server-side, not rejected: a 4096×4096 PNG (646 KiB base64) bills 1,029 prompt tokens, the same as 2048×2048. Uploading raw pixels therefore costs bandwidth only, not tokens.
+
+The image really reaches the model through omp, not just through a direct API call. Asking the agent to reproduce its tool output verbatim shows the decoded part: `Read image file [image/png] (displayed as image/webp)`, `original 96x96`, and a correct description of the solid colour. One caveat when testing this: a *one-word* colour answer is unreliable here even at `--thinking high`, because reasoning tokens share the output budget — the same prompt answered `Red`, `Blue`, and `White` across runs while a request that asks the model to describe the image is consistently right. Judge media with a descriptive prompt, not a single-token one.
+
+Token estimation is trustworthy on this model. `deepseek-v4.1-flash` classifies as the DeepSeek V4.1 Flash family, which carries a **verified** `deepseek-patch` rule in the catalog (patch 14, 3×3 merge, 1,024-token cap, 544² pixel floor). Estimated 652 tokens for a 1024×1024 image against 687 measured, and 994 against 1,029 at 2048² and above — close enough that local context accounting does not trigger compaction early from images.
+
+### Compaction
+
+Compaction needs no special comping on this model, and that is a measured result rather than an assumption. omp budgets a summarization call as `maxTokens = min(floor(0.8 × reserve), 16384)` (13,107 with the 16,384 default reserve) against an input capped at `floor(0.8 × 262144) − maxTokens − 16384` = 180,224 tokens. Reproducing that exact request — a 179,418-token conversation plus the system prompt — returns 200, `finish_reason: "stop"`, and a 176-token summary. So the ceiling that breaks naive large-prompt calls does not reach compaction.
+
+Two host behaviours make this safe, both worth knowing when tuning:
+
+- Normal turns are **not** left to fail on the ceiling. `fitOutputTokensToContextWindow` (`@oh-my-pi/pi-agent-core`) trims `maxTokens` to the remaining room whenever `prompt + max_tokens` would exceed the window, so a 65,536 output cap does not 400 as the prompt grows. Measured: a 196,609-token prompt with `max_tokens: 65536` succeeds (it 400s only when the sum genuinely exceeds 262,144).
+- Compaction is a separate request that does not go through that clamp, which is why its budget is reserved explicitly.
+
+Streamed usage is always present, with or without `stream_options.include_usage`, so threshold maintenance measures context from the provider's own count. Prompt caching is real: repeating a 12,037-token prefix reports `cached_tokens: 11,904` on the second call, which is what lets the model card advertise `cacheRead: 0.006`.
+
+Images are **not** carried into a summary — `serializeConversation` keeps only text blocks, so a summary replaces an image with its surrounding description. That is the host's design, not a Kourier limitation; it is the reason image-heavy sessions should state what mattered in text.
 
 ### Video is not supported by Kourier's schemas
 

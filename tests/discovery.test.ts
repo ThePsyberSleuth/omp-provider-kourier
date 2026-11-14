@@ -18,6 +18,28 @@ describe("Kourier model discovery", () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash", object: "model", owned_by: "kourier" }] }) });
     expect(models[0].input).toEqual(["text", "image"]);
   });
+  test("applies the wire compat to every discovered model, not just the primary", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "deepseek-v4.1-flash" },
+      { id: "some-other-model", capabilities: { reasoning: true, vision: true } },
+    ] }) });
+    expect(models).toHaveLength(2);
+    for (const model of models) {
+      // Bare `medium` 400s and reasoning streams in `reasoning` for every id
+      // behind the same Bifrost front, so the wire compat is per-provider fact.
+      expect(model.compat).toMatchObject({ reasoningContentField: "reasoning", supportsReasoningEffort: true });
+      expect(model.thinking).toMatchObject({ mode: "effort", defaultLevel: "high" });
+    }
+  });
+  test("does not offer an effort ladder to a non-reasoning row", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "text-only-model", capabilities: { reasoning: false } }] }) });
+    expect(models[0].thinking).toBeUndefined();
+    expect(models[0].compat).toMatchObject({ reasoningContentField: "reasoning" });
+  });
+  test("does not claim vision for a non-primary id until it declares it", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "undeclared-model" }] }) });
+    expect(models[0].input).toEqual(["text"]);
+  });
   test("honors an explicit text-only capability", async () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash", capabilities: { vision: false } }] }) });
     expect(models[0].input).toEqual(["text"]);

@@ -28,22 +28,30 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
   const output = record.max_output_tokens ?? record.max_tokens;
   // GET /models returns only id/object/created/owned_by, so a missing capability
   // block means "unknown", not "text only": the primary model must keep vision,
-  // which the endpoint accepts. An explicit vision:false still wins.
+  // which the endpoint accepts. An explicit vision:false still wins. Other ids
+  // stay text-only until they declare vision — claiming it wrongly costs a 400,
+  // while claiming text-only merely swaps images for a placeholder.
   const image = record.capabilities === undefined
     ? id === PRIMARY_MODEL
     : record.capabilities.vision === true || record.capabilities.input?.includes("image") === true;
+  const reasoning = record.capabilities?.reasoning ?? true;
   const contextWindow = Number.isSafeInteger(context) && Number(context) > 0 ? Number(context) : 262144;
   const declaredOutput = Number.isSafeInteger(output) && Number(output) > 0 ? Number(output) : DEFAULT_MAX_TOKENS;
   return {
     id, name: typeof record.name === "string" && record.name ? record.name : id,
-    api: "openai-completions", reasoning: record.capabilities?.reasoning ?? true,
+    api: "openai-completions", reasoning,
     input: image ? ["text", "image"] : ["text"],
     cost: { ...COST },
     contextWindow,
     // GET /models advertises no output limit; the endpoint's real rule is
     // prompt + max_tokens <= 262144. A declared budget never exceeds the context.
     maxTokens: Math.min(declaredOutput, contextWindow),
-    ...(id === PRIMARY_MODEL ? { thinking: THINKING, compat: KOURIER_COMPAT } : {}),
+    // The wire, not the model, owns these: every id is served by the same
+    // Bifrost front, so a bare `medium` 400s and reasoning streams in
+    // `reasoning` for all of them. `thinking` gates on the reasoning flag so a
+    // non-reasoning row is not offered an effort ladder it cannot honour.
+    compat: KOURIER_COMPAT,
+    ...(reasoning ? { thinking: THINKING } : {}),
   };
 }
 
