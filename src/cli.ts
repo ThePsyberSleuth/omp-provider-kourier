@@ -14,6 +14,15 @@ async function install(force: boolean): Promise<void> {
   catch { source = resolve(new URL("../../src/index.ts", import.meta.url).pathname); }
   const extensionDir = join(homedir(), ".omp/agent/extensions");
   const destination = join(extensionDir, "kourier.ts");
+  // A marketplace install already registers the provider; a second copy here
+  // makes omp call registerProvider("kourier") twice and abort.
+  const marketplaceInstall = join(homedir(), ".omp/plugins/node_modules/omp-provider-kourier");
+  try {
+    await lstat(marketplaceInstall);
+    if (!force) throw new Error(`Kourier is installed as a marketplace plugin (${marketplaceInstall}).\nRemove it first (omp plugin uninstall omp-provider-kourier@kourier-providers), or pass --force if you really want both.`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   await mkdir(extensionDir, { recursive: true });
   try {
     const existing = await lstat(destination);
