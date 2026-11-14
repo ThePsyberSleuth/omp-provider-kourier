@@ -34,6 +34,7 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - Reasoning shares the output budget: at `reasoning_effort: high` a forced 3,000-token cap finished `length` with 937 of those tokens spent on reasoning. A `max` run therefore yields less visible answer per token, not more room. omp sends this limit as `max_completion_tokens` (not `max_tokens`), verified on the wire.
 - Thinking effort: `off` (`reasoning_effort: none`), then `minimal`→`low`, `low`, `medium`→`high`, `high` (default), `xhigh`→`high`, `max`. Verified against the live endpoint: `medium` as a literal returns HTTP 400, and DeepSeek's own mapping table sends `xhigh` to `high` — measured reasoning tokens are low ≈95, high ≈113, xhigh ≈102, max ≈204, so `max` is the only step above `high`. Thinking streams in `reasoning`, not `reasoning_content`; the model's `reasoning_content` must be replayed when tools are present.
 - Wire quirks carried in `KOURIER_COMPAT`: effort mapping, `none` as the off switch, and thinking read from `reasoning` rather than `reasoning_content`.
+- Tool calls: verified end to end at both `high` and `max` — the model returns a `tool_calls` entry with parseable arguments, and a second completion carrying the matching `tool_call_id` and the tool result produces the correct answer. Forced (`tool_choice` naming a function) and `required` are honored; `none` disables tools; no 400 and no retry on any of them. On the tool-call turn DeepSeek emits no reasoning at all, so omp replays `reasoning: ""`; the endpoint accepts that or an omitted field, so the replay quirk is tolerated rather than load-bearing.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
 
 The extension owns the model metadata when installed: it registers `kourier` with `KOURIER_COMPAT` and the model card above. Pointing a `models.yml` entry at provider id `kourier` (API type `openai-completions`, model id `deepseek-v4.1-flash`) is the alternative for installs without the extension; a `models.yml` entry for the same provider/id does not add a second model, so put capability or compat corrections in one place only.
@@ -46,7 +47,7 @@ npm test
 npm run build
 ```
 
-`npm run install-extension` installs the local extension symlink. `npm run test` runs unit and mock-server integration coverage. CLI commands: `omp-provider-kourier install`, `login`, `models`, and `test`.
+`npm run install-extension` installs the local extension symlink. `npm run test` runs unit and mock-server integration coverage, plus a live tool-call round-trip suite (`tests/tool-roundtrip.test.ts`) that calls the real endpoint using `KOURIER_API_KEY` — it skips cleanly when no key is present, so it is safe in CI. CLI commands: `omp-provider-kourier install`, `login`, `models`, and `test`.
 
 ## Releasing
 
