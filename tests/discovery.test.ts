@@ -8,7 +8,7 @@ describe("Kourier model discovery", () => {
       return Response.json({ data: [{ id: "deepseek-v4.1-flash", name: "Flash", context_length: 262144, max_output_tokens: 16384, capabilities: { reasoning: true, vision: true } }] });
     } });
     expect(models).toHaveLength(1);
-    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high", "xhigh", "max"], defaultLevel: "high" }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
+    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high", "xhigh", "max"], defaultLevel: "high" }, cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 } });
   });
   test("defaults maxTokens to the thinking-mode budget, not Kourier's documented 16K cap", async () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash" }] }) });

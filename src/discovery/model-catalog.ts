@@ -8,9 +8,13 @@ const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 // at exactly 16385, and 40000 completed at 20831. 65536 is DeepSeek's documented
 // thinking-mode default and leaves ~196K of prompt room.
 const DEFAULT_MAX_TOKENS = 65536;
+// DeepSeek's published peak rates for DeepSeek-V4.1-Flash, USD per 1M tokens
+// (peak = 01:00-04:00 and 06:00-10:00 UTC Mon-Fri; off-peak is half of these).
+// omp bills a single rate per run, so the peak figures are the safe quote.
+const COST = { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 };
 export const FALLBACK_MODELS: ProviderModelConfig[] = [{
   id: PRIMARY_MODEL, name: "DeepSeek V4.1 Flash", api: "openai-completions", reasoning: true,
-  input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  input: ["text", "image"], cost: { ...COST },
   contextWindow: 262144, maxTokens: DEFAULT_MAX_TOKENS,
   thinking: { mode: "effort", efforts: [...EFFORTS], defaultLevel: "high" },
 }];
@@ -32,7 +36,7 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
     id, name: typeof record.name === "string" && record.name ? record.name : id,
     api: "openai-completions", reasoning: record.capabilities?.reasoning ?? true,
     input: image ? ["text", "image"] : ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    cost: { ...COST },
     contextWindow,
     // GET /models advertises no output limit; the endpoint's real rule is
     // prompt + max_tokens <= 262144. A declared budget never exceeds the context.
