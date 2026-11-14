@@ -39,18 +39,19 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 
 ### The Responses endpoint (`POST /v1/responses`)
 
-Kourier also serves OpenAI's Responses format. It works, but is **not usable as an omp provider** and this plugin deliberately stays on `openai-completions`:
+Kourier also serves OpenAI's Responses format. It works, but this plugin deliberately stays on `openai-completions` because the two surfaces take **different content-part schemas** and the Responses one is broken for text:
 
 | Aspect | Chat Completions | Responses |
 |---|---|---|
-| Content parts (`{"type":"input_text"}`) | accepted | **rejected** — `DeepSeek V4.1 supports text and image content only; got 'input_text'` |
-| Plain string content | accepted | accepted |
-| Image input | accepted (verified) | **impossible** — `input_image` is also rejected |
+| Text parts | `{"type":"text"}` accepted | `{"type":"input_text"}` **rejected** — `supports text and image content only; got 'input_text'`; `{"type":"text"}` also rejected |
+| Plain string content | accepted | accepted — the only way to send text |
+| Image parts | `{"type":"image_url"}` accepted | `{"type":"input_image"}` **accepted** (verified: solid blue → "Blue", green → "Green") |
+| Image + text in one turn | accepted | **not possible**: an `input_image` part cannot be combined with any text part; put the instruction in a separate plain-string message |
 | `medium` effort | 400 | 400 (same `KOURIER_COMPAT` mapping needed) |
 | Tool call → result | `function_call_output` not needed | works via `{"type":"function_call_output","call_id":…,"output":…}` |
 | `previous_response_id` | n/a | **404** — server is stateless, replay full `output` instead |
 
-omp's Responses provider emits `input_text` content parts, so pointing `api: openai-responses` at Kourier fails immediately with a 400. The only content form Kourier accepts on that surface is a plain string, which cannot carry images and cannot express omp's multimodal turns. `previous_response_id` also 404s, so any client must replay full history.
+Images on the Responses surface are therefore *not* impossible — `input_image` works, including in multi-turn history — but text must be a plain string and an image message cannot also carry an instruction. omp's Responses provider emits `input_text` parts, so pointing `api: openai-responses` at Kourier fails immediately with a 400; the plugin follows omp's own schema rather than a lossy translation layer. `previous_response_id` also 404s, so any client must replay full history.
 
 Reasoning streams as `response.reasoning_text.delta` with `output_tokens_details.reasoning_tokens`, and `max_output_tokens` accepts up to 262,143 (the same `prompt + output ≤ 262144` rule, measured on both surfaces).
 
