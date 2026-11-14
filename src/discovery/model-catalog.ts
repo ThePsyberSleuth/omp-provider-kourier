@@ -20,7 +20,12 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
   if (!id || !/^[\w./:-]{1,200}$/.test(id)) return undefined;
   const context = record.context_window ?? record.context_length;
   const output = record.max_output_tokens ?? record.max_tokens;
-  const image = record.capabilities?.vision === true || record.capabilities?.input?.includes("image") === true;
+  // GET /models returns only id/object/created/owned_by, so a missing capability
+  // block means "unknown", not "text only": the primary model must keep vision,
+  // which the endpoint accepts. An explicit vision:false still wins.
+  const image = record.capabilities === undefined
+    ? id === PRIMARY_MODEL
+    : record.capabilities.vision === true || record.capabilities.input?.includes("image") === true;
   return {
     id, name: typeof record.name === "string" && record.name ? record.name : id,
     api: "openai-completions", reasoning: record.capabilities?.reasoning ?? true,

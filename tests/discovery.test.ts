@@ -14,6 +14,14 @@ describe("Kourier model discovery", () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash" }] }) });
     expect(models[0].maxTokens).toBe(65536);
   });
+  test("keeps vision when the catalog omits capabilities", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash", object: "model", owned_by: "kourier" }] }) });
+    expect(models[0].input).toEqual(["text", "image"]);
+  });
+  test("honors an explicit text-only capability", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash", capabilities: { vision: false } }] }) });
+    expect(models[0].input).toEqual(["text"]);
+  });
   test("ignores malformed rows and falls back for an empty catalog", async () => {
     const result = await discoverModels("key", { fetch: async () => Response.json({ data: [{ name: "missing id" }] }) });
     expect(result).toEqual(FALLBACK_MODELS);
