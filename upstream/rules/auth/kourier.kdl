@@ -1,3 +1,7 @@
+// NOT ACTIVE. The host reads only the compiled pi-catalog rules.json, which has
+// no kourier entry (coralbricks has 21). This file is the upstream proposal
+// payload for UPSTREAM_PR.md step 1 — login works today because the extension
+// registers `oauth` itself, not because of this file.
 auth "kourier" {
 	name "Kourier (DeepSeek V4.1 Flash)"
 	login "api-key" {
