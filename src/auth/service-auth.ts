@@ -1,4 +1,7 @@
 import { KOURIER_AUTH_BASE, type FetchLike, type OAuthCredentials, type OAuthLoginCallbacks } from "../types.js";
+import { nextPollDelay } from "./poll-delay.js";
+
+export { nextPollDelay };
 
 interface IdentityClaim { user_code?: string; verification_uri?: string; verification_url?: string; interval?: number; expires_in?: number }
 interface IdentityResponse {
@@ -26,16 +29,6 @@ async function parseTokenResponse(response: Response): Promise<TokenResponse> {
       expires_in: Number(fields.get("expires_in")) || undefined,
     };
   }
-}
-
-const SLOW_DOWN_INCREMENT_MS = 5000;
-
-/**
- * RFC 8628 §3.5 / Kourier auth.md: `slow_down` means wait longer between polls,
- * and the longer interval applies to every subsequent poll, not just the next one.
- */
-export function nextPollDelay(currentMs: number, slowDown: boolean): number {
-  return slowDown ? currentMs + SLOW_DOWN_INCREMENT_MS : currentMs;
 }
 
 function waitForPoll(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -73,6 +66,8 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
   while (Date.now() < deadline) {
     if (callbacks.signal?.aborted) throw callbacks.signal.reason ?? new Error("Login cancelled");
     await waitForPoll(intervalMs, callbacks.signal);
+    // The check above happens before the sleep; re-check so a poll is never sent at/after expiry.
+    if (Date.now() >= deadline) break;
     const response = await fetcher(`${base}/oauth2/token`, {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams({ grant_type: "urn:workos:agent-auth:grant-type:claim", claim_token: claimToken }).toString(), signal: callbacks.signal,

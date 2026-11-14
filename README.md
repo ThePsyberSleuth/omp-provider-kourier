@@ -62,8 +62,11 @@ The extension owns the model metadata when installed: it registers `kourier` wit
 ```sh
 npm install
 npm test
+npm run laws
 npm run build
 ```
+
+`npm run laws` proves the stateful rules with [gdp-wired](https://github.com/monotykamary/gdp-wired): `laws/proven.ts` holds the laws the code must keep, `laws/protocol.ts` the auth-poll and catalog loops whose violations were once reachable (each has a replay in `tests/`). The shipped `nextPollDelay` carries its own `// gdp: law` comments and is checkable directly with `npx gdp-wired-cli check src/auth/poll-delay.ts --mode standalone --entry nextPollDelay`.
 
 `npm run install-extension` installs the local extension symlink. `npm run test` runs unit and mock-server integration coverage, plus a live tool-call round-trip suite (`tests/tool-roundtrip.test.ts`) that calls the real endpoint using `KOURIER_API_KEY` — it skips cleanly when no key is present, so it is safe in CI. CLI commands: `omp-provider-kourier install`, `login`, `models`, and `test`.
 

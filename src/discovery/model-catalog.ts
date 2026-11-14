@@ -26,15 +26,17 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
   const image = record.capabilities === undefined
     ? id === PRIMARY_MODEL
     : record.capabilities.vision === true || record.capabilities.input?.includes("image") === true;
+  const contextWindow = Number.isSafeInteger(context) && Number(context) > 0 ? Number(context) : 262144;
+  const declaredOutput = Number.isSafeInteger(output) && Number(output) > 0 ? Number(output) : DEFAULT_MAX_TOKENS;
   return {
     id, name: typeof record.name === "string" && record.name ? record.name : id,
     api: "openai-completions", reasoning: record.capabilities?.reasoning ?? true,
     input: image ? ["text", "image"] : ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: Number.isSafeInteger(context) && Number(context) > 0 ? Number(context) : 262144,
+    contextWindow,
     // GET /models advertises no output limit; the endpoint's real rule is
-    // prompt + max_tokens <= 262144, so fall back to the default budget.
-    maxTokens: Number.isSafeInteger(output) && Number(output) > 0 ? Number(output) : DEFAULT_MAX_TOKENS,
+    // prompt + max_tokens <= 262144. A declared budget never exceeds the context.
+    maxTokens: Math.min(declaredOutput, contextWindow),
     ...(id === PRIMARY_MODEL ? { thinking: { mode: "effort" as const, efforts: [...EFFORTS], defaultLevel: "high" as const } } : {}),
   };
 }
