@@ -78,13 +78,15 @@ The extension owns the model metadata when installed: it registers `kourier` wit
 ## Development
 
 ```sh
-npm install
-npm test
-npm run laws
-npm run build
+bun install
+bun run test
+bun run laws
+bun run build
 ```
 
-`npm run laws` proves the stateful rules with [gdp-wired](https://github.com/monotykamary/gdp-wired). Every state machine and decision in `src/` has a model and a replay against the shipped code:
+`bun.lock` is the committed lockfile; reproduce a clean tree with `bun install --frozen-lockfile`. The SDK packages (`@oh-my-pi/pi-coding-agent`, `pi-ai`, `pi-catalog`) are dev dependencies pinned to the host's exact version, because the extension is type-checked against that host.
+
+`bun run laws` proves the stateful rules with [gdp-wired](https://github.com/monotykamary/gdp-wired). Every state machine and decision in `src/` has a model and a replay against the shipped code:
 
 | Area | Model | Replay |
 |---|---|---|
