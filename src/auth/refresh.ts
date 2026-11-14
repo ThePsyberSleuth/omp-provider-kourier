@@ -1,4 +1,5 @@
 import {KOURIER_AUTH_BASE, type OAuthCredentials} from '../types.js'
+import {credentialsFromPayload, credentialKey, type TokenPayload} from './credentials.js'
 
 /** Exchange a refresh token for new credentials. The old refresh token is kept when
  * the server does not rotate it, so a refresh never loses the ability to refresh again. */
@@ -9,8 +10,7 @@ export async function refreshToken(credentials: OAuthCredentials): Promise<OAuth
     method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'},
     body: JSON.stringify({grant_type: 'refresh_token', refresh_token: token}),
   })
-  const payload = await response.json() as {access_token?: string; api_key?: string; refresh_token?: string; expires_in?: number; error_description?: string}
-  if (!response.ok || !(payload.api_key || payload.access_token)) throw new Error(payload.error_description ?? `Kourier token refresh failed (${response.status})`)
-  const key = payload.api_key ?? payload.access_token!
-  return {...credentials, access: key, refresh: payload.refresh_token ?? token, expires: Date.now() + (payload.expires_in ?? 31536000) * 1000}
+  const payload = await response.json() as TokenPayload
+  if (!response.ok || credentialKey(payload) === undefined) throw new Error(payload.error_description ?? `Kourier token refresh failed (${response.status})`)
+  return credentialsFromPayload(payload, credentials)
 }

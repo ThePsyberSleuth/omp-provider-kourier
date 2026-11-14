@@ -108,16 +108,22 @@ const CONSERVATIVE_CONTEXT = 32768
 const CONSERVATIVE_MAX_TOKENS = 8192
 const PRIMARY_CONTEXT = 262144
 const PRIMARY_MAX_TOKENS = 65536
+// Above every default, so the declared-value laws cover the range their names
+// claim (and the 1,000,000 witness the regression test uses).
+const DECLARED_CEILING = 2000000
 
 const defaults = rule('capability defaults')
   .params({declared: nat, declaredContext: nat, declaredOutput: nat, isPrimary: nat})
   .inputs({tick: nat})
   .assume(({declared}) => declared.atMost(2))
   .assume(({isPrimary}) => isPrimary.atMost(1))
-  // Bound the declared sizes: any value above the conservative fallback is
-  // equivalent for the laws below, so the search does not need 262144 options.
-  .assume(({declaredContext}) => declaredContext.atMost(PRIMARY_CONTEXT))
-  .assume(({declaredOutput}) => declaredOutput.atMost(PRIMARY_MAX_TOKENS))
+  // The declared bounds must reach ABOVE the primary defaults, or a law named
+  // "declared always wins" cannot observe the case it claims: a provider
+  // declaring 1,000,000 is exactly the witness its name covers (and the case the
+  // regression test uses). Bounding at PRIMARY_CONTEXT silently restricted the
+  // domain to "declared wins, up to the value it would default to anyway".
+  .assume(({declaredContext}) => declaredContext.atMost(DECLARED_CEILING))
+  .assume(({declaredOutput}) => declaredOutput.atMost(DECLARED_CEILING))
   // `done` separates "computed" from the initial state: laws that talk about
   // context/maxTokens are vacuously false on the initial zeros, which is the
   // initial-state gotcha this file already hit once.

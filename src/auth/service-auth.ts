@@ -1,5 +1,6 @@
 import { KOURIER_AUTH_BASE, type FetchLike, type OAuthCredentials, type OAuthLoginCallbacks } from "../types.js";
 import { nextPollDelay } from "./poll-delay.js";
+import { credentialsFromPayload, credentialKey, type TokenPayload } from "./credentials.js";
 
 export { nextPollDelay };
 
@@ -13,11 +14,10 @@ interface IdentityResponse {
   expires_in?: number;
   claim?: IdentityClaim;
 }
-interface TokenResponse { access_token?: string; api_key?: string; error?: string; error_description?: string; expires_in?: number; refresh_token?: string }
 
-async function parseTokenResponse(response: Response): Promise<TokenResponse> {
+async function parseTokenResponse(response: Response): Promise<TokenPayload> {
   const body = await response.text();
-  try { return JSON.parse(body) as TokenResponse; }
+  try { return JSON.parse(body) as TokenPayload; }
   catch {
     const fields = new URLSearchParams(body);
     return {
@@ -73,10 +73,9 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
       body: new URLSearchParams({ grant_type: "urn:workos:agent-auth:grant-type:claim", claim_token: claimToken }).toString(), signal: callbacks.signal,
     });
     const payload = await parseTokenResponse(response);
-    if (response.ok && (payload.api_key || payload.access_token)) {
-      const key = payload.api_key ?? payload.access_token!;
+    if (response.ok && credentialKey(payload) !== undefined) {
       callbacks.onProgress?.("Kourier sign-in complete");
-      return {access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000, email};
+      return { ...credentialsFromPayload(payload), email };
     }
     if (payload.error === "authorization_pending") { callbacks.onProgress?.("Waiting for browser verification…"); continue; }
     if (payload.error === "slow_down") {

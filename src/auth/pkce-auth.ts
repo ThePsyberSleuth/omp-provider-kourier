@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { KOURIER_AUTH_BASE, type FetchLike, type OAuthCredentials, type OAuthLoginCallbacks } from "../types.js";
+import { credentialsFromPayload, credentialKey, type TokenPayload } from "./credentials.js";
 
-interface TokenPayload { access_token?: string; api_key?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string }
 function base64url(bytes: Uint8Array): string { return Buffer.from(bytes).toString("base64url"); }
 
 export async function loginWithPkce(callbacks: OAuthLoginCallbacks, options: { fetch?: FetchLike; authBase?: string; clientId?: string; timeoutMs?: number; openBrowser?: (url: string) => Promise<void> } = {}): Promise<OAuthCredentials> {
@@ -46,8 +46,7 @@ export async function loginWithPkce(callbacks: OAuthLoginCallbacks, options: { f
       body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier }).toString(), signal: callbacks.signal,
     });
     const payload = await tokenResponse.json() as TokenPayload;
-    if (!tokenResponse.ok || !(payload.api_key || payload.access_token)) throw new Error(payload.error_description ?? `Kourier token exchange failed (${tokenResponse.status})`);
-    const key = payload.api_key ?? payload.access_token!;
-    return { access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000 };
+    if (!tokenResponse.ok || credentialKey(payload) === undefined) throw new Error(payload.error_description ?? `Kourier token exchange failed (${tokenResponse.status})`);
+    return credentialsFromPayload(payload);
   } finally { clearTimeout(timeout); closeServer(); }
 }

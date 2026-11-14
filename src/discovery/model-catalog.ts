@@ -32,13 +32,6 @@ const COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 // through a Bifrost front — not a property of the subscription. Applying that
 // rewrite to a future non-DeepSeek id would silently move its effort level.
 const DEEPSEEK_FAMILY = "deepseek";
-export const FALLBACK_MODELS: ProviderModelConfig[] = [{
-  id: PRIMARY_MODEL, name: "DeepSeek V4.1 Flash", api: "openai-completions", reasoning: true,
-  input: ["text", "image"], cost: { ...COST },
-  contextWindow: 262144, maxTokens: DEFAULT_MAX_TOKENS,
-  thinking: THINKING,
-  compat: KOURIER_COMPAT,
-}];
 
 /** Identity a model id resolves to in the bundled catalog, best-effort. */
 function familyOf(id: string): string | undefined {
@@ -99,6 +92,17 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
     ...(reasoning ? { thinking: THINKING } : {}),
   };
 }
+
+/**
+ * The static entry used when discovery cannot run. Derived from
+ * `normalizeModel` rather than hand-written, so the fallback can never drift
+ * from what a live `GET /models` would produce for the same id — the two used to
+ * be parallel copies that differed only in the display name.
+ */
+export const FALLBACK_MODELS: ProviderModelConfig[] = [{
+  ...normalizeModel({ id: PRIMARY_MODEL })!,
+  name: "DeepSeek V4.1 Flash",
+}];
 
 export async function discoverModels(apiKey: string, options: { fetch?: FetchLike; baseUrl?: string; signal?: AbortSignal } = {}): Promise<ProviderModelConfig[]> {
   const fetcher = options.fetch ?? fetch;

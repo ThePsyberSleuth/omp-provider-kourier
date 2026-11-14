@@ -11,10 +11,8 @@ export interface KourierModelRecord {
 export interface KourierModelsResponse { data?: KourierModelRecord[]; models?: KourierModelRecord[] }
 import type { ExtensionAPI as SdkExtensionAPI, ProviderModelConfig as SdkProviderModelConfig } from "@oh-my-pi/pi-coding-agent";
 import type {
-  OAuthAuthInfo as SdkOAuthAuthInfo,
   OAuthCredentials as SdkOAuthCredentials,
   OAuthLoginCallbacks as SdkOAuthLoginCallbacks,
-  OAuthPrompt as SdkOAuthPrompt,
 } from "@oh-my-pi/pi-ai/oauth/types";
 import { Effort } from "@oh-my-pi/pi-catalog/effort";
 
@@ -23,11 +21,7 @@ export type ProviderModelConfig = SdkProviderModelConfig;
 export type ExtensionAPI = SdkExtensionAPI;
 export type OAuthCredentials = SdkOAuthCredentials;
 export type OAuthLoginCallbacks = SdkOAuthLoginCallbacks;
-export type OAuthAuthInfo = SdkOAuthAuthInfo;
-export type OAuthPrompt = SdkOAuthPrompt;
 export { Effort };
-/** The efforts Kourier's wire accepts, as the host's enum. */
-export const KOURIER_EFFORTS = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max] as const;
 /** Kourier (Bifrost) wire quirks, verified against api.kourier.sh. */
 export const KOURIER_COMPAT = {
   // The Bifrost schema takes none/minimal/low/medium/high/xhigh/max but DeepSeek
