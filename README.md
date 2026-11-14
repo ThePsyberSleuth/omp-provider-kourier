@@ -11,7 +11,7 @@ omp plugin marketplace add ThePsyberSleuth/omp-provider-kourier
 omp plugin install omp-provider-kourier@kourier-providers
 ```
 
-In a session the same is `/marketplace add ThePsyberSleuth/omp-provider-kourier` then `/marketplace install omp-provider-kourier@kourier-providers`, followed by `/reload-plugins`. The plugin declares `package.json` `omp.extensions`, so installation symlinks it into `~/.omp/plugins/node_modules` and omp loads the provider from there — do not also link it into `~/.omp/agent/extensions/`, or the provider is registered twice.
+In a session the same is `/marketplace add ThePsyberSleuth/omp-provider-kourier` then `/marketplace install omp-provider-kourier@kourier-providers`, then restart the omp session — `/reload-plugins` only refreshes skills, commands, agents, and MCP servers, while a newly installed extension module loads at startup. The plugin declares `package.json` `omp.extensions`, so installation symlinks it into `~/.omp/plugins/node_modules` and omp loads the provider from there — do not also link it into `~/.omp/agent/extensions/`, or the provider is registered twice.
 
 From npm instead:
 
@@ -44,6 +44,15 @@ npm run build
 ```
 
 `npm run install-extension` installs the local extension symlink. `npm run test` runs unit and mock-server integration coverage. CLI commands: `omp-provider-kourier install`, `login`, `models`, and `test`.
+
+## Releasing
+
+`omp plugin upgrade` compares the catalog's `version`, so a release means bumping `version` in **both** `package.json` and `.omp-plugin/marketplace.json` (and committing a tag if you want one). Pushing code without a version bump leaves every existing install on the cached copy — `omp plugin upgrade` reports `1.0.0` and reinstalls nothing newer. After pushing:
+
+```sh
+omp plugin marketplace update kourier-providers
+omp plugin upgrade omp-provider-kourier@kourier-providers
+```
 
 ## Upstream contribution
 
