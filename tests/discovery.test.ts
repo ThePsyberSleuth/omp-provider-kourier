@@ -107,4 +107,22 @@ describe("Kourier model discovery", () => {
     expect(models[0].maxTokens).toBe(2048);
     expect(models[0].thinking).toBeDefined();
   });
+  // The conservative fallback is a DEFAULT, not a ceiling: a non-primary id that
+  // declares a larger window keeps it. An earlier law in laws/provider-contract.ts
+  // claimed otherwise and was false — these two pin the real branches so the law
+  // and the code cannot drift apart again.
+  test("a non-primary id keeps a declared window larger than the fallback", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "some-future-model", context_window: 1000000, max_output_tokens: 400000 },
+    ] }) });
+    expect(models[0].contextWindow).toBe(1000000);
+    expect(models[0].maxTokens).toBe(400000);
+  });
+  test("clamps a declared output budget to the declared window", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "some-future-model", context_window: 8192, max_output_tokens: 999999 },
+    ] }) });
+    expect(models[0].contextWindow).toBe(8192);
+    expect(models[0].maxTokens).toBe(8192);
+  });
 });

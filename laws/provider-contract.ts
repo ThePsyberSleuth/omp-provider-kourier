@@ -88,29 +88,53 @@ const fits = compaction.law(
   ({prompt, maxTokens, context}) => prompt.plus(maxTokens).atMost(context))
 
 // --- capability defaults ----------------------------------------------------
-// GET /v1/models sends id/object/created/owned_by only, so every row that is not
-// the verified primary arrives with no capability block and no limits. The
-// shipped shape: an undeclared window gets a conservative pair, and a ladder is
-// offered only when reasoning was declared or the id is the primary model.
-// `declared`: 0 = capability block absent, 1 = reasoning false, 2 = reasoning true.
+// GET /v1/models sends id/object/created/owned_by only, so a row that is not the
+// verified primary usually arrives with no capability block and no limits. The
+// shipped branches, modelled exactly (this is where an earlier version of this
+// file was wrong: it omitted the declared paths and so proved a claim the code
+// violates for a non-primary id that declares a large window):
+//
+//   contextWindow = declaredContext > 0 ? declaredContext : isPrimary ? 262144 : 32768
+//   maxTokens     = min(declaredOutput > 0 ? declaredOutput : isPrimary ? 65536 : 8192,
+//                       contextWindow)
+//   ladder        = declared.reasoning ?? isPrimary
+//
+// params: `declared` capability block (0 absent, 1 reasoning false, 2 reasoning
+// true), `declaredContext` / `declaredOutput` (0 = absent), `isPrimary` (0/1).
 const PRESENT = 1
 const ABSENT = 0
 const DECLARED_FALSE = 1
+const CONSERVATIVE_CONTEXT = 32768
+const CONSERVATIVE_MAX_TOKENS = 8192
+const PRIMARY_CONTEXT = 262144
+const PRIMARY_MAX_TOKENS = 65536
 
 const defaults = rule('capability defaults')
-  .params({declared: nat, isPrimary: nat})
+  .params({declared: nat, declaredContext: nat, declaredOutput: nat, isPrimary: nat})
   .inputs({tick: nat})
   .assume(({declared}) => declared.atMost(2))
   .assume(({isPrimary}) => isPrimary.atMost(1))
-  .state({ladder: 0, context: 0, maxTokens: 0})
-  .step(({declared, isPrimary}) => ({
-    // unrolled: reasoning = declared.reasoning ?? isPrimary; ladder follows it
-    ladder: when(declared.eq(DECLARED_FALSE), 0, when(declared.eq(2), 1, isPrimary)),
-    // unrolled: 262144 for the primary, 32768 for any other undeclared id
-    context: when(isPrimary.eq(1), 262144, 32768),
-    // unrolled: 65536 for the primary, 8192 otherwise
-    maxTokens: when(isPrimary.eq(1), 65536, 8192),
-  }))
+  // Bound the declared sizes: any value above the conservative fallback is
+  // equivalent for the laws below, so the search does not need 262144 options.
+  .assume(({declaredContext}) => declaredContext.atMost(PRIMARY_CONTEXT))
+  .assume(({declaredOutput}) => declaredOutput.atMost(PRIMARY_MAX_TOKENS))
+  // `done` separates "computed" from the initial state: laws that talk about
+  // context/maxTokens are vacuously false on the initial zeros, which is the
+  // initial-state gotcha this file already hit once.
+  .state({ladder: 0, context: 0, maxTokens: 0, done: 0})
+  .step(({declared, declaredContext, declaredOutput, isPrimary}) => {
+    const fallbackContext = when(isPrimary.eq(1), PRIMARY_CONTEXT, CONSERVATIVE_CONTEXT)
+    const context = when(declaredContext.gt(0), declaredContext, fallbackContext)
+    const fallbackOutput = when(isPrimary.eq(1), PRIMARY_MAX_TOKENS, CONSERVATIVE_MAX_TOKENS)
+    const requestedOutput = when(declaredOutput.gt(0), declaredOutput, fallbackOutput)
+    return {
+      ladder: when(declared.eq(DECLARED_FALSE), 0, when(declared.eq(2), 1, isPrimary)),
+      context,
+      // Math.min in the shipped code — the clamp, not just the fallback.
+      maxTokens: when(requestedOutput.atMost(context), requestedOutput, context),
+      done: 1,
+    }
+  })
 
 // The claim that matters for a future model: never offer an effort ladder that
 // was not earned. Over-offering one invites a 400 the user cannot explain.
@@ -121,14 +145,29 @@ const noUnearnedLadder = defaults.law(
 
 // An over-claimed context is a hard failure (prompt past the real window ->
 // 400); an under-claimed one only compacts early. So the output budget may never
-// exceed the window, and a non-primary id may never claim DeepSeek's window.
+// exceed the window, whatever was declared.
 const budgetWithinContext = defaults.law(
   'the output budget never exceeds the claimed context window',
-  ({maxTokens, context}) => maxTokens.atMost(context))
+  ({maxTokens, context, done}) => done.eq(1).implies(maxTokens.atMost(context)))
 
-const conservativeForOthers = defaults.law(
-  'only the primary id claims the DeepSeek context window',
-  ({context, isPrimary}) => context.gt(32768).implies(isPrimary.eq(1)))
+// Scoped to the UNDECLARED case on purpose. A non-primary id that declares a
+// large window legitimately exceeds the conservative fallback; the property that
+// actually holds is that the conservative default is what an undeclared one
+// gets, and that nothing gets the big window by accident.
+const conservativeForUndeclared = defaults.law(
+  'an undeclared non-primary id falls back to the conservative window',
+  ({context, declaredContext, isPrimary, done}) =>
+    done.eq(1).and(declaredContext.eq(0)).and(isPrimary.eq(0)).implies(context.eq(CONSERVATIVE_CONTEXT)))
+
+const declaredContextWins = defaults.law(
+  'a declared context window always wins over every default',
+  ({context, declaredContext, done}) =>
+    done.eq(1).and(declaredContext.gt(0)).implies(context.eq(declaredContext)))
+
+const primaryDefaultOnly = defaults.law(
+  'the DeepSeek window is claimed only by the primary id or a declared value',
+  ({context, declaredContext, isPrimary, done}) =>
+    done.eq(1).and(context.eq(PRIMARY_CONTEXT)).implies(isPrimary.eq(1).or(declaredContext.eq(PRIMARY_CONTEXT))))
 
 const results = [
   ['pre: another family drops the rewrite', proveSteps(effortMap, [], [dropsForOther])],
@@ -137,7 +176,9 @@ const results = [
   ['compaction fits the context', proveRule(compaction, [fits])],
   ['no unearned effort ladder', proveRule(defaults, [noUnearnedLadder])],
   ['budget fits the claimed window', proveRule(defaults, [budgetWithinContext])],
-  ['only the primary claims the big window', proveRule(defaults, [conservativeForOthers])],
+  ['undeclared non-primary is conservative', proveRule(defaults, [conservativeForUndeclared])],
+  ['declared context always wins', proveRule(defaults, [declaredContextWins])],
+  ['big window needs primary or declaration', proveRule(defaults, [primaryDefaultOnly])],
 ] as const
 
 void PRESENT
