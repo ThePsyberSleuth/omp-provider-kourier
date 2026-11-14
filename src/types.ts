@@ -48,8 +48,13 @@ export const KOURIER_COMPAT = {
   supportsForcedToolChoice: true,
   // The model id classifies as the DeepSeek family, so the catalog applies
   // DeepSeek-on-its-own-API rules to this Bifrost front. Measured: every one of
-  // them is false here, and leaving them inherited silently degrades agentic
-  // turns (reasoning dropped whenever tools are sent) and breaks replay.
+  // them is false here, and leaving them inherited breaks forced tool choice:
+  // `disableReasoningOnToolChoice` turns reasoning off whenever a `tool_choice`
+  // reaches the policy, which for a forced or named choice also wins over the
+  // user's effort. The common agentic case is safe either way — "auto" is
+  // deleted before the policy resolves (shouldDropAutoToolChoiceForReasoning),
+  // and `disableReasoningWithTools` is not set — so this is about forced/named
+  // choices and about replay, not every tools turn.
   disableReasoningOnToolChoice: false,
   requiresReasoningContentForToolCalls: false,
   requiresReasoningContentForAllAssistantTurns: false,

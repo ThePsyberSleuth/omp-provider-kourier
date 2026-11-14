@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "bun test tests",
-    "laws": "bun laws/proven.ts && bun laws/protocol.ts && bun laws/pkce.ts && bun laws/refresh.ts",
+    "laws": "bun laws/proven.ts && bun laws/protocol.ts && bun laws/pkce.ts && bun laws/refresh.ts && bun laws/provider-contract.ts",
     "install-extension": "bun run build && bun dist/bin/cli.js install"
   },
   "devDependencies": {

@@ -8,7 +8,7 @@ describe("Kourier model discovery", () => {
       return Response.json({ data: [{ id: "deepseek-v4.1-flash", name: "Flash", context_length: 262144, max_output_tokens: 16384, capabilities: { reasoning: true, vision: true } }] });
     } });
     expect(models).toHaveLength(1);
-    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high", "xhigh", "max"], defaultLevel: "high" }, cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 } });
+    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high", "xhigh", "max"], defaultLevel: "high" }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
   });
   test("defaults maxTokens to the thinking-mode budget, not Kourier's documented 16K cap", async () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "deepseek-v4.1-flash" }] }) });
@@ -50,5 +50,35 @@ describe("Kourier model discovery", () => {
   });
   test("rejects failed discovery responses", async () => {
     expect(discoverModels("key", { fetch: async () => new Response("", { status: 503 }) })).rejects.toThrow("503");
+  });
+  // Kourier bills a flat subscription with no token quotas, so a non-zero rate
+  // card would report spend the user never incurs — and would be wrong for any
+  // family other than the one it was copied from.
+  test("prices every discovered model at the flat subscription rate, never an upstream card", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "deepseek-v4.1-flash" },
+      { id: "claude-sonnet-4-5" },
+    ] }) });
+    for (const model of models) expect(model.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+  });
+  // `medium` -> `high` is a DeepSeek 400 workaround. A future non-DeepSeek id
+  // must not inherit it, or its requested effort silently moves a rung.
+  test("scopes the DeepSeek effort rewrite to the DeepSeek family", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "deepseek-v4.1-flash" },
+      { id: "claude-sonnet-4-5" },
+    ] }) });
+    const [deepseek, sonnet] = models;
+    expect(deepseek.compat).toMatchObject({ reasoningEffortMap: { minimal: "low", medium: "high", xhigh: "high" } });
+    expect(sonnet.compat?.reasoningEffortMap).toEqual({ minimal: "low" });
+    // The Bifrost wire facts still apply to every id, whatever the family.
+    for (const model of models) expect(model.compat).toMatchObject({ reasoningContentField: "reasoning", supportsReasoningEffort: true });
+  });
+  // An unclassified id takes the dropped map on purpose, not by oversight: a
+  // wrong rewrite silently moves the user's effort rung, and the host already
+  // heals a rejected `medium` by retrying the nearest rung.
+  test("does not rewrite effort for an unclassified id", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "some-unknown-thing" }] }) });
+    expect(models[0].compat?.reasoningEffortMap).toEqual({ minimal: "low" });
   });
 });
