@@ -11,7 +11,7 @@
 		{
 			"name": "omp-provider-kourier",
 			"description": "Native Kourier provider for omp: DeepSeek V4.1 Flash over the verified Bifrost wire, with agent, browser, and API-key sign-in.",
-			"version": "1.0.3",
+			"version": "1.0.4",
 			"source": "./",
 			"category": "development",
 			"license": "MIT",
