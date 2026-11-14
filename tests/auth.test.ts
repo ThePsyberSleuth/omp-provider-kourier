@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loginWithServiceAuth } from "../src/auth/service-auth.js";
+import { loginWithServiceAuth, nextPollDelay } from "../src/auth/service-auth.js";
 import { verifyApiKey } from "../src/auth/verify-key.js";
 import type { OAuthLoginCallbacks } from "../src/types.js";
 
@@ -34,7 +34,36 @@ describe("Kourier authentication", () => {
     expect(result).toMatchObject({ access: "sk-bf-issued", apiKey: "sk-bf-issued", accessToken: "sk-bf-issued", refresh: "r1", email: "member@example.com" });
     expect(received[0]).toContain("Code: 123456");
     expect(tokenBodies.every(body => body.get("grant_type") === "urn:workos:agent-auth:grant-type:claim" && body.get("claim_token") === "claim-1")).toBe(true);
-  });
+  }, 30_000);  // slow_down now adds 5 s before the poll that mints the key
+  test("slow_down increases the interval for every later poll", async () => {
+    // Control: the pure backoff rule itself.
+    expect(nextPollDelay(1000, false)).toBe(1000);
+    expect(nextPollDelay(1000, true)).toBe(6000);
+    expect(nextPollDelay(nextPollDelay(1000, true), true)).toBe(11000);
+
+    // Behaviour: observe the real gaps between token polls. Poll 2 returns
+    // slow_down, so polls 3 and 4 must each wait 5000 ms longer than poll 1.
+    const stamps: number[] = [];
+    let polls = 0;
+    const fetcher = async (url: string | URL | Request): Promise<Response> => {
+      if (String(url).endsWith("/agent/identity")) {
+        return Response.json({ claim_token: "claim-1", verification_uri: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 60, interval: 1 });
+      }
+      stamps.push(Date.now());
+      polls++;
+      if (polls === 2) return Response.json({ error: "slow_down" }, { status: 400 });
+      if (polls < 4) return Response.json({ error: "authorization_pending" }, { status: 400 });
+      return Response.json({ api_key: "sk-bf-issued" });
+    };
+    await loginWithServiceAuth(callbacks("member@example.com"), { fetch: fetcher, pollIntervalMs: 1000 });
+
+    const gaps = stamps.slice(1).map((t, i) => t - stamps[i]);
+    expect(gaps).toHaveLength(3);
+    // Before the fix every gap was ~1000 ms and this failed.
+    expect(gaps[0]).toBeGreaterThanOrEqual(900);   // poll 1 -> 2: base interval
+    expect(gaps[1]).toBeGreaterThanOrEqual(5900);  // after slow_down
+    expect(gaps[2]).toBeGreaterThanOrEqual(5900);  // still backed off on later polls
+  }, 60_000);
   test("parses form-encoded token error responses", async () => {
     const fetcher = async (url: string | URL | Request): Promise<Response> => String(url).endsWith("/agent/identity")
       ? Response.json({ claim_token: "claim-1", verification_url: "https://app.kourier.sh/verify", user_code: "123456", expires_in: 20, interval: 1 })

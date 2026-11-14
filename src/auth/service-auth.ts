@@ -28,6 +28,16 @@ async function parseTokenResponse(response: Response): Promise<TokenResponse> {
   }
 }
 
+const SLOW_DOWN_INCREMENT_MS = 5000;
+
+/**
+ * RFC 8628 §3.5 / Kourier auth.md: `slow_down` means wait longer between polls,
+ * and the longer interval applies to every subsequent poll, not just the next one.
+ */
+export function nextPollDelay(currentMs: number, slowDown: boolean): number {
+  return slowDown ? currentMs + SLOW_DOWN_INCREMENT_MS : currentMs;
+}
+
 function waitForPoll(milliseconds: number, signal?: AbortSignal): Promise<void> {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const timer = setTimeout(resolve, milliseconds);
@@ -57,7 +67,7 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
   if (!claimToken || !verifyUrl || !userCode) throw new Error("Kourier returned an incomplete agent identity response");
   callbacks.onAuth({ url: verifyUrl, userCode, instructions: `Code: ${userCode}\nOpen ${verifyUrl} in your browser, sign in with ${email}, type the code and click Approve.` });
   const intervalSeconds = claim?.interval ?? identity.interval ?? 5;
-  const intervalMs = Math.max(1000, intervalSeconds * 1000, options.pollIntervalMs ?? 0);
+  let intervalMs = Math.max(1000, intervalSeconds * 1000, options.pollIntervalMs ?? 0);
   const expiresIn = claim?.expires_in ?? identity.expires_in ?? 600;
   const deadline = Date.now() + Math.max(1, expiresIn) * 1000;
   while (Date.now() < deadline) {
@@ -77,7 +87,10 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
       };
     }
     if (payload.error === "authorization_pending") { callbacks.onProgress?.("Waiting for browser verification…"); continue; }
-    if (payload.error === "slow_down") { callbacks.onProgress?.("Kourier requested slower polling"); continue; }
+    if (payload.error === "slow_down") {
+      intervalMs = nextPollDelay(intervalMs, true);
+      callbacks.onProgress?.("Kourier requested slower polling"); continue;
+    }
     if (payload.error === "expired_token" || response.status === 404) throw new Error("Kourier sign-in request expired; start login again");
     if (payload.error) throw new Error(`Kourier sign-in failed: ${payload.error_description ?? payload.error}`);
     if (!response.ok) throw new Error(`Kourier token polling failed (${response.status})`);
