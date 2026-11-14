@@ -37,6 +37,23 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - Tool calls: verified end to end at both `high` and `max` — the model returns a `tool_calls` entry with parseable arguments, and a second completion carrying the matching `tool_call_id` and the tool result produces the correct answer. Forced (`tool_choice` naming a function) and `required` are honored; `none` disables tools; no 400 and no retry on any of them. On the tool-call turn DeepSeek emits no reasoning at all, so omp replays `reasoning: ""`; the endpoint accepts that or an omitted field, so the replay quirk is tolerated rather than load-bearing.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
 
+### The Responses endpoint (`POST /v1/responses`)
+
+Kourier also serves OpenAI's Responses format. It works, but is **not usable as an omp provider** and this plugin deliberately stays on `openai-completions`:
+
+| Aspect | Chat Completions | Responses |
+|---|---|---|
+| Content parts (`{"type":"input_text"}`) | accepted | **rejected** — `DeepSeek V4.1 supports text and image content only; got 'input_text'` |
+| Plain string content | accepted | accepted |
+| Image input | accepted (verified) | **impossible** — `input_image` is also rejected |
+| `medium` effort | 400 | 400 (same `KOURIER_COMPAT` mapping needed) |
+| Tool call → result | `function_call_output` not needed | works via `{"type":"function_call_output","call_id":…,"output":…}` |
+| `previous_response_id` | n/a | **404** — server is stateless, replay full `output` instead |
+
+omp's Responses provider emits `input_text` content parts, so pointing `api: openai-responses` at Kourier fails immediately with a 400. The only content form Kourier accepts on that surface is a plain string, which cannot carry images and cannot express omp's multimodal turns. `previous_response_id` also 404s, so any client must replay full history.
+
+Reasoning streams as `response.reasoning_text.delta` with `output_tokens_details.reasoning_tokens`, and `max_output_tokens` accepts up to 262,143 (the same `prompt + output ≤ 262144` rule, measured on both surfaces).
+
 The extension owns the model metadata when installed: it registers `kourier` with `KOURIER_COMPAT` and the model card above. Pointing a `models.yml` entry at provider id `kourier` (API type `openai-completions`, model id `deepseek-v4.1-flash`) is the alternative for installs without the extension; a `models.yml` entry for the same provider/id does not add a second model, so put capability or compat corrections in one place only.
 
 ## Development

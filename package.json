@@ -1,6 +1,6 @@
 {
   "name": "omp-provider-kourier",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Native Kourier provider extension for Oh My Pi",
   "type": "module",
   "license": "MIT",
