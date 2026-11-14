@@ -10,9 +10,14 @@ export interface TokenPayload {
   error_description?: string;
 }
 
-/** Kourier returns the usable key in either field; `api_key` wins when both appear. */
+/**
+ * Kourier returns the usable key in either field; `api_key` wins when both appear.
+ * Truthiness, not nullish: a 200 carrying `{"api_key": ""}` is a failed exchange,
+ * not credentials with an empty key. The three call sites threw on that before
+ * this helper existed and must keep doing so.
+ */
 export function credentialKey(payload: TokenPayload): string | undefined {
-  return payload.api_key ?? payload.access_token;
+  return payload.api_key || payload.access_token || undefined;
 }
 
 /**

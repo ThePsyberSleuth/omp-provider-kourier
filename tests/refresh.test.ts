@@ -41,4 +41,23 @@ describe('refreshToken', () => {
     stub({error_description: 'nope'}, false)
     await expect(refreshToken(credentials)).rejects.toThrow(/nope/)
   })
+
+  // A 200 carrying an empty key is a failed exchange, not credentials with no
+  // key: the guard is truthiness, so `{"api_key": ""}` must throw rather than
+  // hand back `access: ""` (which would look like a valid login). Driven through
+  // the real refreshToken, not the helper, so the contract is pinned where it
+  // is actually relied on. The message differs by layer (refreshToken rejects on
+  // its own status check before credentials are built), so assert the rejection.
+  test('an empty key in a 200 is rejected, not accepted as credentials', async () => {
+    for (const payload of [{api_key: ''}, {access_token: ''}, {}]) {
+      stub(payload)
+      await expect(refreshToken(credentials)).rejects.toThrow(/did not contain an API key|token refresh failed/)
+    }
+  })
+
+  test('an empty api_key falls through to a usable access_token', async () => {
+    stub({api_key: '', access_token: 'real'})
+    const next = await refreshToken(credentials)
+    expect(next.access).toBe('real')
+  })
 })
