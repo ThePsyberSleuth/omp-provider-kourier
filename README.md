@@ -29,7 +29,8 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - API: `openai-completions`
 - Base URL: `https://api.kourier.sh/v1`
 - Model catalog: live `GET /models`; when discovery cannot run, the extension retains its static DeepSeek V4.1 Flash entry.
-- DeepSeek V4.1 Flash: 262,144 context, 16,384 max output, text/image input, reasoning at low/high/xhigh/max effort (high default; `medium` and `minimal` are mapped to `high`/`low` because the endpoint rejects the literal strings), flat-rate zero per-token cost metadata.
+- DeepSeek V4.1 Flash: 262,144 context, 16,384 max output, text/image input, flat-rate zero per-token cost metadata.
+- Thinking effort: `off` (`reasoning_effort: none`), then `minimal`→`low`, `low`, `medium`→`high`, `high` (default), `xhigh`→`high`, `max`. Verified against the live endpoint: `medium` as a literal returns HTTP 400, and DeepSeek's own mapping table sends `xhigh` to `high` — measured reasoning tokens are low ≈95, high ≈113, xhigh ≈102, max ≈204, so `max` is the only step above `high`. Thinking streams in `reasoning`, not `reasoning_content`; the model's `reasoning_content` must be replayed when tools are present.
 - Wire quirks carried in `KOURIER_COMPAT`: effort mapping, `none` as the off switch, and thinking read from `reasoning` rather than `reasoning_content`.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
 

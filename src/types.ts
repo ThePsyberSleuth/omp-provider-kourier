@@ -20,7 +20,10 @@ export interface ProviderModelConfig {
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 /** Kourier (Bifrost) wire quirks, verified against api.kourier.sh. */
 export const KOURIER_COMPAT = {
-  // DeepSeek rejects effort "medium"; low/high/xhigh/max and "none" are accepted.
+  // The Bifrost schema takes none/minimal/low/medium/high/xhigh/max but DeepSeek
+  // rejects the literal "medium" with a 400, so it is rewritten to "high".
+  // Measured reasoning tokens: low ~95, high ~113, xhigh ~102 (DeepSeek maps
+  // xhigh->high; only "max" ~204 is a real step up). No integer 1-100 support here.
   reasoningEffortMap: { minimal: "low", medium: "high" },
   reasoningDisableMode: "none-effort",
   // Thinking streams and replays in `reasoning`, not `reasoning_content`.
