@@ -4,6 +4,17 @@ A native provider extension for [omp (Oh My Pi)](https://github.com/can1357/oh-m
 
 ## Install
 
+As an omp marketplace plugin (recommended):
+
+```sh
+omp plugin marketplace add ThePsyberSleuth/omp-provider-kourier
+omp plugin install omp-provider-kourier@kourier-providers
+```
+
+In a session the same is `/marketplace add ThePsyberSleuth/omp-provider-kourier` then `/marketplace install omp-provider-kourier@kourier-providers`, followed by `/reload-plugins`. The plugin declares `package.json` `omp.extensions`, so installation symlinks it into `~/.omp/plugins/node_modules` and omp loads the provider from there — do not also link it into `~/.omp/agent/extensions/`, or the provider is registered twice.
+
+From npm instead:
+
 ```sh
 npm install -g omp-provider-kourier
 omp-provider-kourier install
