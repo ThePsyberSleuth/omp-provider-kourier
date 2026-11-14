@@ -5,6 +5,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { discoverModels, FALLBACK_MODELS } from "./discovery/model-catalog.js";
 import { verifyApiKey } from "./auth/verify-key.js";
+import { installBlocker } from "./install-guard.js";
 
 const apiKey = (): string | undefined => process.env.KOURIER_API_KEY;
 async function install(force: boolean): Promise<void> {
@@ -17,21 +18,18 @@ async function install(force: boolean): Promise<void> {
   // A marketplace install already registers the provider; a second copy here
   // makes omp call registerProvider("kourier") twice and abort.
   const marketplaceInstall = join(homedir(), ".omp/plugins/node_modules/omp-provider-kourier");
-  try {
-    await lstat(marketplaceInstall);
-    if (!force) throw new Error(`Kourier is installed as a marketplace plugin (${marketplaceInstall}).\nRemove it first (omp plugin uninstall omp-provider-kourier@kourier-providers), or pass --force if you really want both.`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+  const existsAt = async (path: string): Promise<boolean> => {
+    try { await lstat(path); return true; } catch { return false; }
+  };
+  const marketplace = await existsAt(marketplaceInstall);
+  const extension = await existsAt(destination);
+  const isDirectory = extension && (await lstat(destination)).isDirectory();
+  const blocker = installBlocker({ marketplace, extension, isDirectory }, force);
+  if (blocker === "marketplace") throw new Error(`Kourier is installed as a marketplace plugin (${marketplaceInstall}).\nRemove it first (omp plugin uninstall omp-provider-kourier@kourier-providers), or pass --force if you really want both.`);
+  if (blocker === "directory") throw new Error(`Refusing to replace extension directory at ${destination}`);
+  if (blocker === "existing") throw new Error(`Extension already exists at ${destination}; pass --force to replace it`);
   await mkdir(extensionDir, { recursive: true });
-  try {
-    const existing = await lstat(destination);
-    if (existing.isDirectory()) throw new Error(`Refusing to replace extension directory at ${destination}`);
-    if (!force) throw new Error(`Extension already exists at ${destination}; pass --force to replace it`);
-    await unlink(destination);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+  if (extension) await unlink(destination);
   await symlink(source, destination);
   console.log(`Installed Kourier extension at ${destination}`);
 }

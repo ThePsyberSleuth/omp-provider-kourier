@@ -30,19 +30,27 @@ const chooseBudget = fun('choose budget')
   .returns(({declared}) => ({chosen: when(declared.gt(0), declared, DEFAULT_MAX_TOKENS)}))
 const neverZero = chooseBudget.law('a chosen budget is never zero', () => [], ({chosen}) => chosen.atLeast(1))
 
-// --- src/auth/service-auth.ts verifyApiKey ----------------------------------
-// An empty or whitespace-only key is never sent: verifyApiKey returns false first.
+// --- src/auth/verify-key.ts -------------------------------------------------
+// verifyApiKey returns false for a blank key before any request, so no request is
+// made for one, and a request is made only for a non-blank key.
+// Replay: tests/verify-key-sanitize.test.ts
 const accept = rule('verify key')
-  .inputs({empty: bool})
-  .state({sent: 0})
-  .step(({empty, sent}) => ({sent: when(empty.not(), 1, sent)}))
-const neverSendsEmpty = accept.law('an empty key is never sent', ({sent}) => sent.atMost(0))
+  .inputs({usable: nat})
+  .state({requests: 0})
+  .assume(({usable}) => usable.atMost(1))
+  .step(({usable, requests}) => ({requests: when(usable.eq(1), requests.plus(1), requests)}))
+// A blank key makes no request; a usable key makes exactly one.
+const neverSendsBlank = accept.stepLaw('a blank key makes no request', ({requests}, after) => after.requests.eq(requests), ({usable}) => usable.eq(0))
+const sendsUsable = accept.stepLaw('a usable key makes one request', ({requests}, after) => after.requests.eq(requests.plus(1)), ({usable}) => usable.eq(1))
+const monotoneRequests = accept.law('the request count never drops', ({requests}) => requests.atLeast(0))
 
 const results = [
   ['poll interval monotone', proveRule(backoff, [neverShrinks])],
   ['poll no slow_down keeps', proveSteps(backoff, [neverShrinks], [noSlowDownKeeps])],
   ['poll slow_down grows', proveSteps(backoff, [neverShrinks], [slowDownGrows])],
   ['catalog never zero', proveDecision(neverZero)],
+  ['verify key blank makes none', proveSteps(accept, [monotoneRequests], [neverSendsBlank])],
+  ['verify key usable makes one', proveSteps(accept, [monotoneRequests], [sendsUsable])],
 ] as const
 
 for (const [name, v] of results) console.log(`${name}: proven=${v.proven} checked=${v.checked}`)

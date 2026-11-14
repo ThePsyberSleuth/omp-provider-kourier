@@ -66,7 +66,19 @@ npm run laws
 npm run build
 ```
 
-`npm run laws` proves the stateful rules with [gdp-wired](https://github.com/monotykamary/gdp-wired): `laws/proven.ts` holds the laws the code must keep, `laws/protocol.ts` the auth-poll and catalog loops whose violations were once reachable (each has a replay in `tests/`). The shipped `nextPollDelay` carries its own `// gdp: law` comments and is checkable directly with `npx gdp-wired-cli check src/auth/poll-delay.ts --mode standalone --entry nextPollDelay`.
+`npm run laws` proves the stateful rules with [gdp-wired](https://github.com/monotykamary/gdp-wired). Every state machine and decision in `src/` has a model and a replay against the shipped code:
+
+| Area | Model | Replay |
+|---|---|---|
+| Poll backoff (`nextPollDelay`) | `laws/proven.ts` + `gdp: law` in source | checked directly from `src/auth/poll-delay.ts` |
+| Auth poll loop deadline | `laws/protocol.ts` | `tests/service-auth-deadline.test.ts` |
+| Catalog output budget | `laws/protocol.ts` | `tests/catalog-max-tokens.test.ts` |
+| API-key sanitization | `laws/proven.ts` | `tests/verify-key-sanitize.test.ts` |
+| PKCE callback settlement | `laws/pkce.ts` | `tests/pkce-state.test.ts` |
+| Credential refresh | `laws/refresh.ts` | `tests/refresh.test.ts` |
+| Install guards | `gdp: law` in `src/install-guard.ts` | `tests/install-guard.test.ts` (all 16 inputs) |
+
+The auth-poll and catalog loops were first *refuted* — a witness run showed a poll sent at expiry and a budget exceeding the context window; both are fixed and now prove. Two laws state what the shipped code does rather than what one might assume: `nextPollDelay`'s `+5000` applies only on `slow_down`, and a blank key makes no request. String/regex source (`verifyApiKey`'s trim and CR/LF check) is outside the extractor's boundary, so it is proven as a model and compared exhaustively against the real function, not extracted.
 
 `npm run install-extension` installs the local extension symlink. `npm run test` runs unit and mock-server integration coverage, plus a live tool-call round-trip suite (`tests/tool-roundtrip.test.ts`) that calls the real endpoint using `KOURIER_API_KEY` — it skips cleanly when no key is present, so it is safe in CI. CLI commands: `omp-provider-kourier install`, `login`, `models`, and `test`.
 
