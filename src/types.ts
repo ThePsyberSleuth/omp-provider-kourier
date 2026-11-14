@@ -11,11 +11,25 @@ export interface KourierModelRecord {
 export interface KourierModelsResponse { data?: KourierModelRecord[]; models?: KourierModelRecord[] }
 export interface ProviderModelConfig {
   id: string; name: string; api: "openai-completions"; reasoning: boolean;
+  supportsTools?: boolean;
   input: Array<"text" | "image">;
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextWindow: number; maxTokens: number;
-  thinking?: { mode: "effort"; efforts: Array<"low" | "medium" | "high">; defaultLevel: "low" | "medium" | "high" };
+  thinking?: { mode: "effort"; efforts: Effort[]; defaultLevel: Effort; requiresEffort?: boolean };
 }
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+/** Kourier (Bifrost) wire quirks, verified against api.kourier.sh. */
+export const KOURIER_COMPAT = {
+  // DeepSeek rejects effort "medium"; low/high/xhigh/max and "none" are accepted.
+  reasoningEffortMap: { minimal: "low", medium: "high" },
+  reasoningDisableMode: "none-effort",
+  // Thinking streams and replays in `reasoning`, not `reasoning_content`.
+  reasoningContentField: "reasoning",
+  supportsReasoningEffort: true,
+  supportsReasoningParams: true,
+  supportsToolChoice: true,
+  supportsForcedToolChoice: true,
+} as const;
 export interface OAuthCredentials {
   access: string; refresh?: string; expires?: number; email?: string;
   apiKey?: string; accessToken?: string; [key: string]: unknown;
@@ -37,6 +51,7 @@ export interface OAuthProviderConfig {
 export interface ExtensionAPI {
   registerProvider(name: string, config: {
     baseUrl: string; apiKey: string; api: "openai-completions"; authHeader: true;
+    compat?: Record<string, unknown>;
     models: ProviderModelConfig[]; oauth: OAuthProviderConfig;
     fetchDynamicModels(apiKey: string): Promise<ProviderModelConfig[]>;
   }): void;

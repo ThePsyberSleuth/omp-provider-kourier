@@ -18,10 +18,11 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - API: `openai-completions`
 - Base URL: `https://api.kourier.sh/v1`
 - Model catalog: live `GET /models`; when discovery cannot run, the extension retains its static DeepSeek V4.1 Flash entry.
-- DeepSeek V4.1 Flash: 262,144 context, 16,384 max output, text/image input, reasoning with low/medium/high effort (medium default), flat-rate zero per-token cost metadata.
+- DeepSeek V4.1 Flash: 262,144 context, 16,384 max output, text/image input, reasoning at low/high/xhigh/max effort (high default; `medium` and `minimal` are mapped to `high`/`low` because the endpoint rejects the literal strings), flat-rate zero per-token cost metadata.
+- Wire quirks carried in `KOURIER_COMPAT`: effort mapping, `none` as the off switch, and thinking read from `reasoning` rather than `reasoning_content`.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
 
-The provider can also be configured through omp's `models.yml` provider/model configuration using provider id `kourier`, API type `openai-completions`, and model id `deepseek-v4.1-flash`.
+The extension owns the model metadata when installed: it registers `kourier` with `KOURIER_COMPAT` and the model card above. Pointing a `models.yml` entry at provider id `kourier` (API type `openai-completions`, model id `deepseek-v4.1-flash`) is the alternative for installs without the extension; a `models.yml` entry for the same provider/id does not add a second model, so put capability or compat corrections in one place only.
 
 ## Development
 

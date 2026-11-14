@@ -12,5 +12,6 @@
     "test": "bun test tests",
     "install-extension": "npm run build && node dist/bin/cli.js install"
   },
-  "devDependencies": { "@types/bun": "^1.2.0", "@types/node": "^22.0.0", "typescript": "^5.7.0" }
+  "devDependencies": { "@types/bun": "^1.2.0", "@types/node": "^22.0.0", "typescript": "^5.7.0" },
+  "omp": { "extensions": ["./src/index.ts"] }
 }

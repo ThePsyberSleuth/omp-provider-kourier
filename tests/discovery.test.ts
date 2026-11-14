@@ -8,7 +8,7 @@ describe("Kourier model discovery", () => {
       return Response.json({ data: [{ id: "deepseek-v4.1-flash", name: "Flash", context_length: 262144, max_output_tokens: 16384, capabilities: { reasoning: true, vision: true } }] });
     } });
     expect(models).toHaveLength(1);
-    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high"], defaultLevel: "medium" }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
+    expect(models[0]).toMatchObject({ api: "openai-completions", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 16384, thinking: { mode: "effort", efforts: ["low", "medium", "high", "xhigh", "max"], defaultLevel: "high" }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
   });
   test("ignores malformed rows and falls back for an empty catalog", async () => {
     const result = await discoverModels("key", { fetch: async () => Response.json({ data: [{ name: "missing id" }] }) });

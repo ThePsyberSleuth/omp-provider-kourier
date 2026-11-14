@@ -1,4 +1,4 @@
-import { KOURIER_API_BASE, KOURIER_AUTH_BASE, type ExtensionAPI, type OAuthCredentials, type OAuthLoginCallbacks } from "./types.js";
+import { KOURIER_API_BASE, KOURIER_AUTH_BASE, KOURIER_COMPAT, type ExtensionAPI, type OAuthCredentials, type OAuthLoginCallbacks } from "./types.js";
 import { loginWithPkce } from "./auth/pkce-auth.js";
 import { loginWithServiceAuth } from "./auth/service-auth.js";
 import { verifyApiKey } from "./auth/verify-key.js";
@@ -36,6 +36,7 @@ export default function kourierExtension(pi: ExtensionAPI): void {
     apiKey: "KOURIER_API_KEY",
     api: "openai-completions",
     authHeader: true,
+    compat: KOURIER_COMPAT,
     models: FALLBACK_MODELS,
     oauth: {
       name: "Kourier (DeepSeek V4.1 Flash)",

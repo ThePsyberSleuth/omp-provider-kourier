@@ -1,11 +1,13 @@
 import { KOURIER_API_BASE, PRIMARY_MODEL, type FetchLike, type KourierModelRecord, type KourierModelsResponse, type ProviderModelConfig } from "../types.js";
 
-const capabilities = { reasoning: true, input: ["text", "image"] as Array<"text" | "image"> };
+// `medium` stays in the ladder only so KOURIER_COMPAT.reasoningEffortMap can
+// rewrite it to `high`; the endpoint rejects the literal string.
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export const FALLBACK_MODELS: ProviderModelConfig[] = [{
   id: PRIMARY_MODEL, name: "DeepSeek V4.1 Flash", api: "openai-completions", reasoning: true,
-  input: capabilities.input, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 262144, maxTokens: 16384,
-  thinking: { mode: "effort", efforts: ["low", "medium", "high"], defaultLevel: "medium" },
+  thinking: { mode: "effort", efforts: [...EFFORTS], defaultLevel: "high" },
 }];
 
 function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undefined {
@@ -21,7 +23,7 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: Number.isSafeInteger(context) && Number(context) > 0 ? Number(context) : 262144,
     maxTokens: Number.isSafeInteger(output) && Number(output) > 0 ? Number(output) : 16384,
-    ...(id === PRIMARY_MODEL ? { thinking: { mode: "effort" as const, efforts: ["low", "medium", "high"] as Array<"low"|"medium"|"high">, defaultLevel: "medium" as const } } : {}),
+    ...(id === PRIMARY_MODEL ? { thinking: { mode: "effort" as const, efforts: [...EFFORTS], defaultLevel: "high" as const } } : {}),
   };
 }
 
