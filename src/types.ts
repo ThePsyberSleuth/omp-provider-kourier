@@ -9,15 +9,25 @@ export interface KourierModelRecord {
   [key: string]: unknown;
 }
 export interface KourierModelsResponse { data?: KourierModelRecord[]; models?: KourierModelRecord[] }
-export interface ProviderModelConfig {
-  id: string; name: string; api: "openai-completions"; reasoning: boolean;
-  supportsTools?: boolean;
-  input: Array<"text" | "image">;
-  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
-  contextWindow: number; maxTokens: number;
-  thinking?: { mode: "effort"; efforts: Effort[]; defaultLevel: Effort; requiresEffort?: boolean };
-}
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+import type { ExtensionAPI as SdkExtensionAPI, ProviderModelConfig as SdkProviderModelConfig } from "@oh-my-pi/pi-coding-agent";
+import type {
+  OAuthAuthInfo as SdkOAuthAuthInfo,
+  OAuthCredentials as SdkOAuthCredentials,
+  OAuthLoginCallbacks as SdkOAuthLoginCallbacks,
+  OAuthPrompt as SdkOAuthPrompt,
+} from "@oh-my-pi/pi-ai/oauth/types";
+import { Effort } from "@oh-my-pi/pi-catalog/effort";
+
+/** Host types, re-exported so the plugin never diverges from the SDK contract. */
+export type ProviderModelConfig = SdkProviderModelConfig;
+export type ExtensionAPI = SdkExtensionAPI;
+export type OAuthCredentials = SdkOAuthCredentials;
+export type OAuthLoginCallbacks = SdkOAuthLoginCallbacks;
+export type OAuthAuthInfo = SdkOAuthAuthInfo;
+export type OAuthPrompt = SdkOAuthPrompt;
+export { Effort };
+/** The efforts Kourier's wire accepts, as the host's enum. */
+export const KOURIER_EFFORTS = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max] as const;
 /** Kourier (Bifrost) wire quirks, verified against api.kourier.sh. */
 export const KOURIER_COMPAT = {
   // The Bifrost schema takes none/minimal/low/medium/high/xhigh/max but DeepSeek
@@ -33,31 +43,4 @@ export const KOURIER_COMPAT = {
   supportsToolChoice: true,
   supportsForcedToolChoice: true,
 } as const;
-export interface OAuthCredentials {
-  access: string; refresh?: string; expires?: number; email?: string;
-  apiKey?: string; accessToken?: string; [key: string]: unknown;
-}
-export interface OAuthAuthInfo { url?: string; instructions?: string; userCode?: string; message?: string }
-export interface OAuthPrompt { message: string; placeholder?: string; allowEmpty?: boolean }
-export interface OAuthLoginCallbacks {
-  onAuth(info: OAuthAuthInfo): void;
-  onPrompt(prompt: OAuthPrompt | string): Promise<string>;
-  onProgress?(message: string): void;
-  signal?: AbortSignal;
-}
-export interface OAuthProviderConfig {
-  name: string;
-  login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials>;
-  getApiKey(credentials: OAuthCredentials): string | undefined;
-  refreshToken?(credentials: OAuthCredentials): Promise<OAuthCredentials>;
-}
-export interface ExtensionAPI {
-  registerProvider(name: string, config: {
-    baseUrl: string; apiKey: string; api: "openai-completions"; authHeader: true;
-    compat?: Record<string, unknown>;
-    models: ProviderModelConfig[]; oauth: OAuthProviderConfig;
-    fetchDynamicModels(apiKey: string): Promise<ProviderModelConfig[]>;
-  }): void;
-  on?(event: string, handler: (...args: unknown[]) => unknown): void;
-}
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;

@@ -58,7 +58,7 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
   const userCode = claim?.user_code ?? identity.user_code;
   const verifyUrl = claim?.verification_url ?? identity.verification_url ?? claim?.verification_uri ?? identity.verification_uri;
   if (!claimToken || !verifyUrl || !userCode) throw new Error("Kourier returned an incomplete agent identity response");
-  callbacks.onAuth({ url: verifyUrl, userCode, instructions: `Code: ${userCode}\nOpen ${verifyUrl} in your browser, sign in with ${email}, type the code and click Approve.` });
+  callbacks.onAuth({ url: verifyUrl, instructions: `Code: ${userCode}\nOpen ${verifyUrl} in your browser, sign in with ${email}, type the code and click Approve.` });
   const intervalSeconds = claim?.interval ?? identity.interval ?? 5;
   let intervalMs = Math.max(1000, intervalSeconds * 1000, options.pollIntervalMs ?? 0);
   const expiresIn = claim?.expires_in ?? identity.expires_in ?? 600;
@@ -76,10 +76,7 @@ export async function loginWithServiceAuth(callbacks: OAuthLoginCallbacks, optio
     if (response.ok && (payload.api_key || payload.access_token)) {
       const key = payload.api_key ?? payload.access_token!;
       callbacks.onProgress?.("Kourier sign-in complete");
-      return {
-        access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000,
-        email, apiKey: key, accessToken: key,
-      };
+      return {access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000, email};
     }
     if (payload.error === "authorization_pending") { callbacks.onProgress?.("Waiting for browser verification…"); continue; }
     if (payload.error === "slow_down") {

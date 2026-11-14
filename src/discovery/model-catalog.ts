@@ -1,8 +1,9 @@
-import { KOURIER_API_BASE, PRIMARY_MODEL, type FetchLike, type KourierModelRecord, type KourierModelsResponse, type ProviderModelConfig } from "../types.js";
+import { Effort, KOURIER_API_BASE, KOURIER_COMPAT, PRIMARY_MODEL, type FetchLike, type KourierModelRecord, type KourierModelsResponse, type ProviderModelConfig } from "../types.js";
 
 // `medium` stays in the ladder only so KOURIER_COMPAT.reasoningEffortMap can
 // rewrite it to `high`; the endpoint rejects the literal string.
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const EFFORTS = [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh, Effort.Max] as const;
+const THINKING = { mode: "effort" as const, efforts: EFFORTS, defaultLevel: Effort.High };
 // Kourier's docs claim a 16,384 per-response cap, but the endpoint enforces only
 // prompt + max_tokens <= 262144: max_tokens 16385 returns finish_reason "length"
 // at exactly 16385, and 40000 completed at 20831. 65536 is DeepSeek's documented
@@ -16,7 +17,8 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [{
   id: PRIMARY_MODEL, name: "DeepSeek V4.1 Flash", api: "openai-completions", reasoning: true,
   input: ["text", "image"], cost: { ...COST },
   contextWindow: 262144, maxTokens: DEFAULT_MAX_TOKENS,
-  thinking: { mode: "effort", efforts: [...EFFORTS], defaultLevel: "high" },
+  thinking: THINKING,
+  compat: KOURIER_COMPAT,
 }];
 
 function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undefined {
@@ -41,7 +43,7 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
     // GET /models advertises no output limit; the endpoint's real rule is
     // prompt + max_tokens <= 262144. A declared budget never exceeds the context.
     maxTokens: Math.min(declaredOutput, contextWindow),
-    ...(id === PRIMARY_MODEL ? { thinking: { mode: "effort" as const, efforts: [...EFFORTS], defaultLevel: "high" as const } } : {}),
+    ...(id === PRIMARY_MODEL ? { thinking: THINKING, compat: KOURIER_COMPAT } : {}),
   };
 }
 

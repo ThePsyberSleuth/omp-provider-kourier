@@ -60,6 +60,9 @@ async function post(path: string, body: unknown) {
 
 const tokens = (r: any) => (r.usage?.prompt_tokens ?? r.usage?.input_tokens) as number | undefined
 
+// Live reasoning model: the default 5s bun timeout is far too short.
+const TIMEOUT = 120_000
+
 describe.skipIf(!key)('Kourier media schemas (live)', () => {
   test('images are read correctly (the control that proves the vision path works)', async () => {
     const red = solidPng(220, 30, 30).toString('base64')
@@ -72,7 +75,7 @@ describe.skipIf(!key)('Kourier media schemas (live)', () => {
     })
     expect(status).toBe(200)
     expect(String(json.choices?.[0]?.message?.content ?? '').toLowerCase()).toContain('red')
-  })
+  }, TIMEOUT)
 
   test('a video part is accepted but carries no media tokens', async () => {
     const {status: baseStatus, json: baseJson} = await post('/chat/completions', {
@@ -91,7 +94,7 @@ describe.skipIf(!key)('Kourier media schemas (live)', () => {
     // 200, and the media was dropped: no extra prompt tokens over the text-only baseline.
     expect(status).toBe(200)
     expect(tokens(json)!).toBeLessThanOrEqual(baseline + 5)
-  })
+  }, TIMEOUT)
 
   test('the responses surface rejects a video part with 400', async () => {
     const {status} = await post('/responses', {
@@ -102,5 +105,5 @@ describe.skipIf(!key)('Kourier media schemas (live)', () => {
       ],
     })
     expect(status).toBe(400)
-  })
+  }, TIMEOUT)
 })

@@ -48,6 +48,6 @@ export async function loginWithPkce(callbacks: OAuthLoginCallbacks, options: { f
     const payload = await tokenResponse.json() as TokenPayload;
     if (!tokenResponse.ok || !(payload.api_key || payload.access_token)) throw new Error(payload.error_description ?? `Kourier token exchange failed (${tokenResponse.status})`);
     const key = payload.api_key ?? payload.access_token!;
-    return { access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000, apiKey: key, accessToken: key };
+    return { access: key, refresh: payload.refresh_token ?? "", expires: Date.now() + (payload.expires_in ?? 31536000) * 1000 };
   } finally { clearTimeout(timeout); closeServer(); }
 }

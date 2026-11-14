@@ -1,4 +1,4 @@
-import { KOURIER_API_BASE, KOURIER_AUTH_BASE, KOURIER_COMPAT, type ExtensionAPI, type OAuthCredentials, type OAuthLoginCallbacks } from "./types.js";
+import { KOURIER_API_BASE, type ExtensionAPI, type OAuthCredentials, type OAuthLoginCallbacks } from "./types.js";
 import { loginWithPkce } from "./auth/pkce-auth.js";
 import { loginWithServiceAuth } from "./auth/service-auth.js";
 import { verifyApiKey } from "./auth/verify-key.js";
@@ -12,7 +12,7 @@ async function login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials> 
   if (["3", "key", "api key", "api-key"].includes(method.toLowerCase())) {
     const key = (await callbacks.onPrompt({ message: "Paste your Kourier API key", placeholder: "sk-bf-…" })).trim().replace(/^Bearer\s+/i, "");
     if (!(await verifyApiKey(key, { signal: callbacks.signal }))) throw new Error("Kourier API key is invalid or could not be verified");
-    return { access: key, refresh: "", expires: Date.now() + 31536000 * 1000, apiKey: key, accessToken: key };
+    return {access: key, refresh: "", expires: Date.now() + 31536000 * 1000};
   }
   throw new Error("Select 1 (agent), 2 (browser), or 3 (API key)");
 }
@@ -23,13 +23,12 @@ export default function kourierExtension(pi: ExtensionAPI): void {
     apiKey: "KOURIER_API_KEY",
     api: "openai-completions",
     authHeader: true,
-    compat: KOURIER_COMPAT,
     models: FALLBACK_MODELS,
     oauth: {
       name: "Kourier (DeepSeek V4.1 Flash)",
       login,
       getApiKey(credentials) {
-        return credentials.access ?? credentials.apiKey ?? credentials.accessToken;
+        return credentials.access;
       },
       refreshToken,
     },

@@ -16,7 +16,7 @@ function stub(payload: unknown, ok = true) {
   return bodies
 }
 
-const credentials = {access: 'old', refresh: 'r1', expires: 0, apiKey: 'old', accessToken: 'old'}
+const credentials = {access: 'old', refresh: 'r1', expires: 0}
 
 describe('refreshToken', () => {
   test('no refresh token throws before any request', async () => {
@@ -28,7 +28,7 @@ describe('refreshToken', () => {
   test('a rotated refresh token replaces the old one', async () => {
     stub({access_token: 'new', refresh_token: 'r2', expires_in: 60})
     const next = await refreshToken(credentials)
-    expect(next).toMatchObject({access: 'new', refresh: 'r2', apiKey: 'new', accessToken: 'new'})
+    expect(next).toMatchObject({access: 'new', refresh: 'r2'})
   })
 
   test('an unrotated refresh token is kept', async () => {

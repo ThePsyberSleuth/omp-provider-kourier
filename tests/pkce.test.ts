@@ -27,7 +27,7 @@ describe("Kourier PKCE and extension", () => {
         return Response.json({ access_token: "sk-bf-token", refresh_token: "refresh", expires_in: 3600 });
       },
     });
-    expect(result).toMatchObject({ access: "sk-bf-token", apiKey: "sk-bf-token", accessToken: "sk-bf-token", refresh: "refresh" });
+    expect(result).toMatchObject({access: "sk-bf-token", refresh: "refresh"});
     expect(tokenBody?.get("grant_type")).toBe("authorization_code");
     expect(tokenBody?.get("code")).toBe("test-code");
     expect(tokenBody?.get("client_id")).toBe("test-client");

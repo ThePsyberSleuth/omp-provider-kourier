@@ -31,7 +31,7 @@ describe("Kourier authentication", () => {
     };
     const received: string[] = [];
     const result = await loginWithServiceAuth({ ...callbacks("member@example.com"), onAuth: info => { received.push(info.instructions ?? ""); } }, { fetch: fetcher, pollIntervalMs: 1000 });
-    expect(result).toMatchObject({ access: "sk-bf-issued", apiKey: "sk-bf-issued", accessToken: "sk-bf-issued", refresh: "r1", email: "member@example.com" });
+    expect(result).toMatchObject({access: "sk-bf-issued", refresh: "r1", email: "member@example.com"});
     expect(received[0]).toContain("Code: 123456");
     expect(tokenBodies.every(body => body.get("grant_type") === "urn:workos:agent-auth:grant-type:claim" && body.get("claim_token") === "claim-1")).toBe(true);
   }, 30_000);  // slow_down now adds 5 s before the poll that mints the key

@@ -3,7 +3,6 @@ dist/
 coverage/
 .env
 *.log
-bun.lock
 .agents/
 .claude/
 skills-lock.json
