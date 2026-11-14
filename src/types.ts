@@ -24,7 +24,7 @@ export const KOURIER_COMPAT = {
   // rejects the literal "medium" with a 400, so it is rewritten to "high".
   // Measured reasoning tokens: low ~95, high ~113, xhigh ~102 (DeepSeek maps
   // xhigh->high; only "max" ~204 is a real step up). No integer 1-100 support here.
-  reasoningEffortMap: { minimal: "low", medium: "high" },
+  reasoningEffortMap: { minimal: "low", medium: "high", xhigh: "high" },
   reasoningDisableMode: "none-effort",
   // Thinking streams and replays in `reasoning`, not `reasoning_content`.
   reasoningContentField: "reasoning",

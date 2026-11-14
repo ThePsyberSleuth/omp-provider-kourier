@@ -29,7 +29,8 @@ Alternatively set `KOURIER_API_KEY` in the environment. Keys are sent only to Ko
 - API: `openai-completions`
 - Base URL: `https://api.kourier.sh/v1`
 - Model catalog: live `GET /models`; when discovery cannot run, the extension retains its static DeepSeek V4.1 Flash entry.
-- DeepSeek V4.1 Flash: 262,144 context, 16,384 max output, text/image input, flat-rate zero per-token cost metadata.
+- DeepSeek V4.1 Flash: 262,144 context, flat-rate zero per-token cost metadata.
+- Output budget: **no 16,384 cap.** Kourier's docs and dashboard say 16,384 max output, but the endpoint only enforces `prompt_tokens + max_tokens <= 262144`. Measured: `max_tokens: 16385` returns `finish_reason: "length"` at exactly 16385 tokens, and a 40,000 budget completed at 20,831 tokens. The model card therefore advertises 65,536 — DeepSeek's documented thinking-mode default — leaving ~196K of prompt room. `GET /v1/models` advertises no output limit at all, so a declared `max_output_tokens` is honored when present and 65,536 is used otherwise.
 - Thinking effort: `off` (`reasoning_effort: none`), then `minimal`→`low`, `low`, `medium`→`high`, `high` (default), `xhigh`→`high`, `max`. Verified against the live endpoint: `medium` as a literal returns HTTP 400, and DeepSeek's own mapping table sends `xhigh` to `high` — measured reasoning tokens are low ≈95, high ≈113, xhigh ≈102, max ≈204, so `max` is the only step above `high`. Thinking streams in `reasoning`, not `reasoning_content`; the model's `reasoning_content` must be replayed when tools are present.
 - Wire quirks carried in `KOURIER_COMPAT`: effort mapping, `none` as the off switch, and thinking read from `reasoning` rather than `reasoning_content`.
 - Login: email-based service authorization (`/agent/identity` and token polling), PKCE loopback browser authorization, and validated API-key entry.
