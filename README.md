@@ -50,6 +50,24 @@ Kourier also serves OpenAI's Responses format. It works, but this plugin deliber
 | `medium` effort | 400 | 400 (same `KOURIER_COMPAT` mapping needed) |
 | Tool call → result | `function_call_output` not needed | works via `{"type":"function_call_output","call_id":…,"output":…}` |
 | `previous_response_id` | n/a | **404** — server is stateless, replay full `output` instead |
+| Video input | not accepted — part silently dropped | not accepted — 400 |
+
+### Video is not supported by Kourier's schemas
+
+DeepSeek-V4.1-Flash-1017 is a multimodal model, and third-party mirrors advertise video alongside vision, but neither Kourier surface accepts video. Measured with a real 6 s H.264 clip (red → green → blue, verified by extracting frames at t=1/3/5 s), instruction sent as a separate message so a drop can only be the media:
+
+| Request | Status | Prompt tokens (text-only baseline: 54) | Outcome |
+|---|---|---|---|
+| `{"type":"video_url","video_url":{"url":"data:video/mp4;base64,…"}}` | 200 | 55 | part dropped — reply: "no clip was attached" |
+| `{"type":"video_url","video_url":"data:video/mp4;base64,…"}` | 200 | 55 | dropped |
+| `{"type":"video","video":…}` / `{"type":"input_video",…}` / `{"type":"file",…}` | 200 | 55 | dropped |
+| `image_url` carrying MP4 data | 400 | — | "cannot identify image file" |
+| `/responses` `input_video` (part or item) | 400 | — | validation: expected `input_text` |
+| **Control:** the same three frames as `image_url` PNGs | 200 | 640 | **correct — "Red / Green / Blue"** |
+
+The control is the point: stills from that exact clip are read correctly and in temporal order, so the model and the vision path work — only the video *part* is unsupported. A video part returns 200 with the media discarded, so status codes cannot be used to detect it; compare `prompt_tokens` against a text-only baseline. Extracting frames is the supported way to get temporal content in.
+
+Scope: this tests Kourier's `chat/completions` and `/responses` schemas, which is all the plugin uses. It is not a statement about the model's or DeepSeek's own API's capability; DeepSeek's vision guide documents JPEG/PNG/GIF/WebP only.
 
 Images on the Responses surface are therefore *not* impossible — `input_image` works, including in multi-turn history — but text must be a plain string and an image message cannot also carry an instruction. omp's Responses provider emits `input_text` parts, so pointing `api: openai-responses` at Kourier fails immediately with a 400; the plugin follows omp's own schema rather than a lossy translation layer. `previous_response_id` also 404s, so any client must replay full history.
 
