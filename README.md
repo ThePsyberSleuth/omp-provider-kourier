@@ -63,16 +63,26 @@ Images work on every shape an agent actually produces, verified against `chat/co
 | Shape | Result |
 |---|---|
 | Image + text in one user message | 200 — correct colour |
-| Image inside a **tool result** | 200 — correct colour ("Red"), the path `read` on a `.png` takes |
+| Image inside a **tool result** | 200 — correct colour, the path `read` on a `.png` takes |
 | Image + tools + `reasoning_effort: high` together | 200 — correct colour |
 | Multiple images in one message (3, 8, 16, 32, 64) | 200 at every count; 64 images = 11,937 prompt tokens |
-| PNG, WebP | both accepted |
+
+PNG and WebP both decode **correctly**, and price identically — `prompt_tokens` was 233 for every flat-colour request and 257 for the two-colour one, regardless of format. Testing was designed to fail loudly rather than to confirm:
+
+- Pixels were verified with ImageMagick before any request, so the oracle is the file, not the intention.
+- Unambiguous colours (red, yellow, black, white) are exact in both formats.
+- A **two-colour** image with known left/right halves is read in the correct order in both formats — flat colour alone would hide a decode defect, since anything that averages still names a solid image correctly.
+- `max_tokens: 800`, because reasoning shares that budget: a 32-token cap burns ~158 reasoning tokens and returns `content: null` with HTTP 200.
+
+This matters because the `read` tool re-encodes a PNG to WebP before sending (`displayed as image/webp`), so WebP fidelity is load-bearing. The host also **upscales** small images to a minimum short edge (a 96×96 source arrives as 200×200). That is `image-resize.ts` behaviour, not a Kourier quirk, and it costs nothing extra here: the billing rule is a 1,024-token cap with a 544² pixel floor, so a small image is already billed at the floor after upscaling.
+
+What is *not* reliable is colour **naming** for ambiguous hues, in either format: cyan sometimes comes back "blue", magenta "purple" or "pink", at the same rate on PNG and WebP (magenta scoring 4/6 on PNG reference in one sample). Lossless WebP behaves like lossy WebP and like PNG here, so this is the model's vocabulary, not the wire. Test with unambiguous colours or request a description; do not infer a media bug from a single ambiguous colour answer. Early host-path runs returned `Red`/`Blue`/`White` for the same file, which likewise did not reproduce in controlled re-runs.
 
 `detail` accepts only `auto | low | high` — `detail: "original"` returns 400 (`Input should be 'auto', 'low'`). omp never sends it on this wire: the completions encoder omits `original` and passes `low`/`high` through (`openai-completions.ts`), so Snapcompact frames bill at the provider default rather than failing.
 
 Large images are resized server-side, not rejected: a 4096×4096 PNG (646 KiB base64) bills 1,029 prompt tokens, the same as 2048×2048. Uploading raw pixels therefore costs bandwidth only, not tokens.
 
-The image really reaches the model through omp, not just through a direct API call. Asking the agent to reproduce its tool output verbatim shows the decoded part: `Read image file [image/png] (displayed as image/webp)`, `original 96x96`, and a correct description of the solid colour. One caveat when testing this: a *one-word* colour answer is unreliable here even at `--thinking high`, because reasoning tokens share the output budget — the same prompt answered `Red`, `Blue`, and `White` across runs while a request that asks the model to describe the image is consistently right. Judge media with a descriptive prompt, not a single-token one.
+The image really reaches the model through omp, not just through a direct API call. Asking the agent to reproduce its tool output verbatim shows the decoded part: `Read image file [image/png] (displayed as image/webp)`, `original 96x96`, and a correct description of the solid colour.
 
 Token estimation is trustworthy on this model. `deepseek-v4.1-flash` classifies as the DeepSeek V4.1 Flash family, which carries a **verified** `deepseek-patch` rule in the catalog (patch 14, 3×3 merge, 1,024-token cap, 544² pixel floor). Estimated 652 tokens for a 1024×1024 image against 687 measured, and 994 against 1,029 at 2048² and above — close enough that local context accounting does not trigger compaction early from images.
 
