@@ -10,6 +10,16 @@ const THINKING = { mode: "effort" as const, efforts: EFFORTS, defaultLevel: Effo
 // at exactly 16385, and 40000 completed at 20831. 65536 is DeepSeek's documented
 // thinking-mode default and leaves ~196K of prompt room.
 const DEFAULT_MAX_TOKENS = 65536;
+// GET /v1/models sends only id/object/created/owned_by — never a context window,
+// output limit, or capability block. Those DeepSeek numbers (262,144 / 65,536)
+// are verified for the primary model and must not become every id's assumption:
+// an over-claimed window makes the host send a prompt past a smaller model's
+// real context and take a 400, which is a hard failure, whereas an under-claimed
+// one only compacts early and still answers. So an undeclared window falls back
+// to a conservative pair that leaves real prompt room (32K - 8K = 24K), and the
+// DeepSeek constants apply only to the verified primary id.
+const CONSERVATIVE_CONTEXT = 32768;
+const CONSERVATIVE_MAX_TOKENS = 8192;
 // Kourier sells the whole catalog as a flat subscription — "no request-volume or
 // token-usage quotas" (Starter $20/mo, Pro $50/mo, per kourier.sh/pricing). The
 // per-token rate card is therefore genuinely zero here, not missing: billing is
@@ -42,17 +52,26 @@ function normalizeModel(record: KourierModelRecord): ProviderModelConfig | undef
   const context = record.context_window ?? record.context_length;
   const output = record.max_output_tokens ?? record.max_tokens;
   const family = familyOf(id);
+  const isPrimary = id === PRIMARY_MODEL;
   // GET /models returns only id/object/created/owned_by, so a missing capability
   // block means "unknown", not "text only": the primary model must keep vision,
   // which the endpoint accepts. An explicit vision:false still wins. Other ids
   // stay text-only until they declare vision — claiming it wrongly costs a 400,
   // while claiming text-only merely swaps images for a placeholder.
   const image = record.capabilities === undefined
-    ? id === PRIMARY_MODEL
+    ? isPrimary
     : record.capabilities.vision === true || record.capabilities.input?.includes("image") === true;
-  const reasoning = record.capabilities?.reasoning ?? true;
-  const contextWindow = Number.isSafeInteger(context) && Number(context) > 0 ? Number(context) : 262144;
-  const declaredOutput = Number.isSafeInteger(output) && Number(output) > 0 ? Number(output) : DEFAULT_MAX_TOKENS;
+  // Undeclared reasoning is only known for the primary model. Defaulting every
+  // id to `true` hands it an effort ladder it was never shown to have, and an
+  // unsupported effort param is a 400 the user cannot explain.
+  const reasoning = record.capabilities?.reasoning ?? isPrimary;
+  // An undeclared window is unknown, not DeepSeek-sized: see CONSERVATIVE_*.
+  const contextWindow = Number.isSafeInteger(context) && Number(context) > 0
+    ? Number(context)
+    : (isPrimary ? 262144 : CONSERVATIVE_CONTEXT);
+  const declaredOutput = Number.isSafeInteger(output) && Number(output) > 0
+    ? Number(output)
+    : (isPrimary ? DEFAULT_MAX_TOKENS : CONSERVATIVE_MAX_TOKENS);
   // The wire quirks that are properties of the Bifrost front apply to every id.
   // The effort rewrite is family-specific, so only a DeepSeek id inherits it.
   // An unclassified id ('unknown') is treated as not-DeepSeek on purpose: a

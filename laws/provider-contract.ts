@@ -87,12 +87,61 @@ const fits = compaction.law(
   'the summarization prompt plus its output fit inside the context window',
   ({prompt, maxTokens, context}) => prompt.plus(maxTokens).atMost(context))
 
+// --- capability defaults ----------------------------------------------------
+// GET /v1/models sends id/object/created/owned_by only, so every row that is not
+// the verified primary arrives with no capability block and no limits. The
+// shipped shape: an undeclared window gets a conservative pair, and a ladder is
+// offered only when reasoning was declared or the id is the primary model.
+// `declared`: 0 = capability block absent, 1 = reasoning false, 2 = reasoning true.
+const PRESENT = 1
+const ABSENT = 0
+const DECLARED_FALSE = 1
+
+const defaults = rule('capability defaults')
+  .params({declared: nat, isPrimary: nat})
+  .inputs({tick: nat})
+  .assume(({declared}) => declared.atMost(2))
+  .assume(({isPrimary}) => isPrimary.atMost(1))
+  .state({ladder: 0, context: 0, maxTokens: 0})
+  .step(({declared, isPrimary}) => ({
+    // unrolled: reasoning = declared.reasoning ?? isPrimary; ladder follows it
+    ladder: when(declared.eq(DECLARED_FALSE), 0, when(declared.eq(2), 1, isPrimary)),
+    // unrolled: 262144 for the primary, 32768 for any other undeclared id
+    context: when(isPrimary.eq(1), 262144, 32768),
+    // unrolled: 65536 for the primary, 8192 otherwise
+    maxTokens: when(isPrimary.eq(1), 65536, 8192),
+  }))
+
+// The claim that matters for a future model: never offer an effort ladder that
+// was not earned. Over-offering one invites a 400 the user cannot explain.
+const noUnearnedLadder = defaults.law(
+  'a ladder is offered only when reasoning was declared or the id is primary',
+  ({ladder, declared, isPrimary}) =>
+    ladder.eq(1).implies(declared.eq(2).or(isPrimary.eq(1))))
+
+// An over-claimed context is a hard failure (prompt past the real window ->
+// 400); an under-claimed one only compacts early. So the output budget may never
+// exceed the window, and a non-primary id may never claim DeepSeek's window.
+const budgetWithinContext = defaults.law(
+  'the output budget never exceeds the claimed context window',
+  ({maxTokens, context}) => maxTokens.atMost(context))
+
+const conservativeForOthers = defaults.law(
+  'only the primary id claims the DeepSeek context window',
+  ({context, isPrimary}) => context.gt(32768).implies(isPrimary.eq(1)))
+
 const results = [
   ['pre: another family drops the rewrite', proveSteps(effortMap, [], [dropsForOther])],
   ['pre: only deepseek keeps the rewrite', proveSteps(effortMap, [], [keepsForDeepseek])],
   ['flat rate card for every family', proveDecision(neverCharges)],
   ['compaction fits the context', proveRule(compaction, [fits])],
+  ['no unearned effort ladder', proveRule(defaults, [noUnearnedLadder])],
+  ['budget fits the claimed window', proveRule(defaults, [budgetWithinContext])],
+  ['only the primary claims the big window', proveRule(defaults, [conservativeForOthers])],
 ] as const
+
+void PRESENT
+void ABSENT
 
 let failed = false
 for (const [name, v] of results) {

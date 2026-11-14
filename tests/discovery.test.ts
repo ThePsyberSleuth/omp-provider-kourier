@@ -81,4 +81,30 @@ describe("Kourier model discovery", () => {
     const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [{ id: "some-unknown-thing" }] }) });
     expect(models[0].compat?.reasoningEffortMap).toEqual({ minimal: "low" });
   });
+  // GET /models sends no capability block and no limits, so a future id must not
+  // inherit DeepSeek's: an over-claimed window makes the host send a prompt past
+  // the real one and take a 400, while an under-claimed one only compacts early.
+  test("does not give an undeclared non-primary id DeepSeek's window or ladder", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "deepseek-v4.1-flash", object: "model", owned_by: "kourier" },
+      { id: "some-future-model", object: "model", owned_by: "kourier" },
+    ] }) });
+    const [primary, future] = models;
+    expect(primary.contextWindow).toBe(262144);
+    expect(primary.maxTokens).toBe(65536);
+    expect(primary.thinking).toBeDefined();
+    expect(future.contextWindow).toBe(32768);
+    expect(future.maxTokens).toBe(8192);
+    // No declared reasoning, so no unearned effort ladder.
+    expect(future.reasoning).toBe(false);
+    expect(future.thinking).toBeUndefined();
+  });
+  test("honours a declared window and reasoning for a non-primary id", async () => {
+    const models = await discoverModels("secret", { fetch: async () => Response.json({ data: [
+      { id: "some-future-model", context_window: 8192, max_output_tokens: 2048, capabilities: { reasoning: true } },
+    ] }) });
+    expect(models[0].contextWindow).toBe(8192);
+    expect(models[0].maxTokens).toBe(2048);
+    expect(models[0].thinking).toBeDefined();
+  });
 });
